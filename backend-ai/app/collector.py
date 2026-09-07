@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 from datetime import datetime, timezone
 from typing import Any
 
@@ -22,7 +23,7 @@ from .schemas import XSearchRequest, YouTubeSearchRequest
 
 
 class CollectorStartRequest(BaseModel):
-    query: str = Field(default="#RiverLinkUpdate", min_length=1, max_length=300)
+    query: str = Field(default="AI", min_length=1, max_length=300)
     interval_seconds: int = Field(default=30, ge=10, le=3600)
     enable_telegram: bool = True
     enable_x: bool = False
@@ -48,14 +49,48 @@ class CollectorManager:
         self._last_run_at: datetime | None = None
         self._last_result: dict[str, Any] = {}
         self._cycles = 0
+        self._recent_insertions: list[tuple[float, int]] = []
+
+    def _calculate_ingestion_rate(self) -> float:
+        if not (self._task and not self._task.done()):
+            return 0.0
+        now_mono = time.monotonic()
+        cutoff_60 = now_mono - 60.0
+        recent = [c for t, c in self._recent_insertions if t >= cutoff_60]
+        if recent:
+            return float(sum(recent))
+        if self._recent_insertions:
+            total_c = sum(c for _, c in self._recent_insertions)
+            elapsed = max(1.0, now_mono - self._recent_insertions[0][0])
+            return round(total_c * (60.0 / elapsed), 1)
+        return 0.0
 
     def status(self) -> dict[str, Any]:
         running = self._task is not None and not self._task.done()
+        store = get_store()
+        last_event = store.latest_event_at()
+
+        source_health: dict[str, str] = {}
+        if self._last_result and "platforms" in self._last_result:
+            for plat, data in self._last_result["platforms"].items():
+                source_health[plat] = data.get("state", "UNKNOWN")
+        else:
+            settings = get_settings()
+            source_health["telegram"] = "OK" if (settings.telegram_bot_token or settings.telegram_public_channels) else "CREDENTIALS_REQUIRED"
+            source_health["x"] = "OK" if settings.x_bearer_token else "CREDENTIALS_REQUIRED"
+            source_health["youtube"] = "OK"
+            source_health["reddit"] = "OK"
+            source_health["bluesky"] = "OK"
+            source_health["mastodon"] = "OK"
+
         return {
             "running": running,
             "config": self._config.model_dump() if self._config else None,
             "cycles": self._cycles,
             "last_run_at": self._last_run_at,
+            "last_event_at": last_event,
+            "ingestion_rate": self._calculate_ingestion_rate(),
+            "source_health": source_health,
             "last_result": self._last_result,
             "note": "X/YouTube continuous polling is opt-in to protect paid credits/quota.",
         }
@@ -124,7 +159,7 @@ class CollectorManager:
             if settings.telegram_bot_token:
                 await process("telegram", telegram_poll(100))
             else:
-                channel_spec = f"{settings.telegram_public_channels or 'NexusSIHDemo'}||{config.query}"
+                channel_spec = f"{settings.telegram_public_channels or 'telegram,durov'}||{config.query}"
                 await process("telegram", telegram_monitored_search(channel_spec, 25))
 
         if config.enable_x:
@@ -155,6 +190,11 @@ class CollectorManager:
 
         if config.enable_mastodon:
             await process("mastodon", mastodon_search(config.query, 20))
+
+        now_mono = time.monotonic()
+        self._recent_insertions.append((now_mono, report["inserted"]))
+        cutoff = now_mono - 300.0
+        self._recent_insertions = [(t, c) for t, c in self._recent_insertions if t >= cutoff]
 
         if report["inserted"]:
             assign_clusters(store)

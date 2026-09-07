@@ -192,6 +192,13 @@ class EventStore:
             row = conn.execute("SELECT COUNT(*) AS c FROM events").fetchone()
         return int(row["c"])
 
+    def latest_event_at(self) -> str | None:
+        with self.connect() as conn:
+            row = conn.execute("SELECT MAX(ingested_at) AS m FROM events").fetchone()
+        if row and row["m"]:
+            return str(row["m"])
+        return None
+
     def update_derived(self, event_id: str, values: dict) -> None:
         allowed = {
             "sentiment_label",

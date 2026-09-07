@@ -243,6 +243,9 @@ export interface CollectorStatus {
   } | null;
   cycles: number;
   last_run_at?: string | null;
+  last_event_at?: string | null;
+  ingestion_rate?: number;
+  source_health?: Record<string, string>;
   last_result?: Record<string, unknown>;
   note: string;
 }

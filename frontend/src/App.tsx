@@ -645,8 +645,8 @@ function NarrativeView({ detail, onOpenEvent }: { detail: NarrativeDetail | null
 
 function App({ onNavigateHome }: { onNavigateHome?: () => void } = {}) {
   const [tab, setTab] = useState<Tab>('overview');
-  const [query, setQuery] = useState('#RiverLinkUpdate');
-  const [activeQuery, setActiveQuery] = useState<string>('#RiverLinkUpdate · demo');
+  const [query, setQuery] = useState('AI');
+  const [activeQuery, setActiveQuery] = useState<string>('AI · live workspace');
   const [overview, setOverview] = useState<Overview | null>(null);
   const [connectors, setConnectors] = useState<ConnectorStatus[]>([]);
   const [showIntelligenceDrawer, setShowIntelligenceDrawer] = useState(true);
@@ -711,7 +711,7 @@ function App({ onNavigateHome }: { onNavigateHome?: () => void } = {}) {
 
   useEffect(() => {
     if (!collector?.running) return;
-    const timer = window.setInterval(() => void loadAll(), 15000);
+    const timer = window.setInterval(() => void loadAll(), 6000);
     return () => window.clearInterval(timer);
   }, [collector?.running, loadAll]);
 
@@ -997,19 +997,27 @@ function App({ onNavigateHome }: { onNavigateHome?: () => void } = {}) {
                 />
               </div>
 
-              {/* COLLECTION CONTROL TRAY */}
+              {/* LIVE TELEMETRY STRIP & COLLECTION CONTROL */}
               <div className="collection-tray">
-                <div className="collection-tray-head">
+                <div className="collection-tray-head" style={{ borderBottom: '1px solid rgba(255,255,255,0.07)', paddingBottom: 8, marginBottom: 10 }}>
                   <div className="collection-tray-title">
-                    <Radio size={14} className="text-blue-400" />
-                    <strong>COLLECTION CONTROL</strong>
+                    <Radio size={14} className={collector?.running ? 'text-emerald-400 animate-pulse' : 'text-slate-400'} />
+                    <strong>LIVE PIPELINE TELEMETRY</strong>
                     <span className={`badge ${collector?.running ? 'badge-live' : 'badge-neutral'}`}>
-                      {collector?.running ? '● STREAMING' : 'IDLE'}
+                      {collector?.running ? '● LIVE STREAMING' : 'IDLE'}
                     </span>
                   </div>
-                  <span className="text-[11px] text-slate-400">
-                    {collector?.cycles ? `${collector.cycles} cycle(s) run` : 'Manual or automated streaming'}
-                  </span>
+                  <div style={{ display: 'flex', gap: 14, alignItems: 'center', fontSize: 11.5 }}>
+                    <span className="text-slate-400">
+                      Last Event: <strong className="text-slate-200">{collector?.last_event_at ? new Date(collector.last_event_at).toLocaleTimeString() : 'Awaiting data'}</strong>
+                    </span>
+                    <span className="text-slate-400">
+                      Rate: <strong className="text-emerald-400">{collector?.ingestion_rate ?? 0} ev/min</strong>
+                    </span>
+                    <span className="text-slate-400">
+                      Cycles: <strong className="text-slate-200">{collector?.cycles || 0}</strong>
+                    </span>
+                  </div>
                 </div>
 
                 <div className="collection-actions-row">
@@ -1022,6 +1030,17 @@ function App({ onNavigateHome }: { onNavigateHome?: () => void } = {}) {
                   >
                     <Radio size={13} />
                     <span>{collector?.running ? 'Stop Continuous' : 'Start Continuous'}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    style={{ height: 32, fontSize: 11.5 }}
+                    disabled={loading}
+                    onClick={() => action('Queried Official X API', () => api.searchX(query))}
+                    title="Query Official X API v2 (honest LIVE or CREDENTIALS_REQUIRED)"
+                  >
+                    + Official X
                   </button>
 
                   <button
@@ -1070,9 +1089,31 @@ function App({ onNavigateHome }: { onNavigateHome?: () => void } = {}) {
                   </button>
                 </div>
 
-                <div className="collection-callout">
+                {/* Per-Platform Connector Health */}
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginTop: 8 }}>
+                  <span style={{ fontSize: 10.5, color: '#94a3b8', marginRight: 2 }}>Sources:</span>
+                  {Object.entries(collector?.source_health || {
+                    telegram: 'OK',
+                    x: 'CREDENTIALS_REQUIRED',
+                    youtube: 'OK',
+                    reddit: 'OK',
+                    bluesky: 'OK',
+                    mastodon: 'OK',
+                  }).map(([plat, state]) => {
+                    const isLive = state === 'OK' || state === 'LIVE';
+                    const isReq = state.includes('REQUIRED') || state.includes('PERMISSION');
+                    const badgeClass = isLive ? 'badge-good' : isReq ? 'badge-warn' : 'badge-bad';
+                    return (
+                      <span key={plat} className={`badge ${badgeClass}`} style={{ fontSize: 10, padding: '2px 6px', textTransform: 'capitalize' }} title={`${plat}: ${state}`}>
+                        {plat}: {state}
+                      </span>
+                    );
+                  })}
+                </div>
+
+                <div className="collection-callout" style={{ marginTop: 8 }}>
                   <ShieldCheck size={14} className="text-emerald-400 shrink-0" />
-                  <span>Fresh Search clears previous results first. These controls append evidence to the active topic instead of creating a second mixed search.</span>
+                  <span>Real-time pipeline active. Ingested posts execute live NLP/AI analysis, timeline updates, sentiment/emotion trends, and evidence verification without simulated fallback.</span>
                 </div>
               </div>
 

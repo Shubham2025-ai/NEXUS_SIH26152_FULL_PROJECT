@@ -33,8 +33,8 @@ class Settings(BaseSettings):
 
     telegram_bot_token: str = ""
     telegram_allowed_chat_ids: str = ""
-    # Primary zero-key SIH demo source. A local .env value can override or extend this.
-    telegram_public_channels: str = "NexusSIHDemo"
+    # Primary zero-key SIH live public source. A local .env value can override or extend this.
+    telegram_public_channels: str = "telegram,durov"
     telegram_poll_timeout_seconds: int = 5
     telegram_mtproto_enabled: bool = False
     telegram_api_id: str = ""

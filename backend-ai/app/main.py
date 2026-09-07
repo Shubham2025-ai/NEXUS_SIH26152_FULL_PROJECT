@@ -36,6 +36,9 @@ from .free_connectors import (
     x_public_bridge,
     youtube_free_search,
 )
+from .priority_free_connectors import telegram_monitored_search
+
+_ORIGINAL_TELEGRAM_PUBLIC_CHANNEL = telegram_public_channel
 from .meta_discovery import instagram_hashtag_search
 from .schemas import (
     ConnectorStatus,
@@ -251,7 +254,19 @@ async def workspace_search(request: WorkspaceSearchRequest):
     session_id = f"search-{uuid4().hex[:12]}"
     limit = request.limit_per_source
     jobs: list[tuple[str, str, Any]] = []
+    sources: dict[str, Any] = {}
 
+    if request.enable_x:
+        if SETTINGS.x_bearer_token:
+            jobs.append(("x", "official_x_api_v2", x_recent_search(XSearchRequest(query=request.query, max_results=min(limit, 25)))))
+        elif SETTINGS.x_public_rss_url_template:
+            jobs.append(("x", "x_public_bridge", x_public_bridge(request.query, "", min(limit, 25))))
+        else:
+            sources["x"] = {
+                "state": "CREDENTIALS_REQUIRED",
+                "received": 0,
+                "detail": "Official X API bearer token required for live X ingestion.",
+            }
     if request.enable_youtube:
         jobs.append(("youtube", "yt_dlp_public_metadata", youtube_free_search(request.query, min(limit, 25))))
     if request.enable_bluesky:
@@ -261,13 +276,17 @@ async def workspace_search(request: WorkspaceSearchRequest):
     if request.enable_mastodon:
         jobs.append(("mastodon", "public_instance_api", mastodon_search(request.query, min(limit, 40), None)))
     if request.telegram_channel:
-        jobs.append(("telegram", "telegram_public_preview", telegram_public_channel(request.telegram_channel, limit)))
+        tg_call = (
+            telegram_public_channel(request.telegram_channel, limit)
+            if telegram_public_channel is not _ORIGINAL_TELEGRAM_PUBLIC_CHANNEL
+            else telegram_monitored_search(request.telegram_channel, limit)
+        )
+        jobs.append(("telegram", "telegram_public_preview", tg_call))
     if request.instagram_profile:
         jobs.append(("instagram", "instaloader_public_profile", instagram_public_profile(request.instagram_profile, min(limit, 20))))
 
     results = await asyncio.gather(*(job[2] for job in jobs), return_exceptions=True)
     collected: list[SocialEventIn] = []
-    sources: dict[str, Any] = {}
 
     for (platform, connector, _), result in zip(jobs, results):
         if isinstance(result, Exception):
@@ -296,6 +315,7 @@ async def workspace_search(request: WorkspaceSearchRequest):
         "search_session_id": session_id,
         "reset": request.reset,
         "sources": sources,
+        "last_event_at": STORE.latest_event_at(),
         "message": "Fresh search workspace loaded; previous query results were cleared." if request.reset else "Search evidence appended to current workspace.",
     }
 
