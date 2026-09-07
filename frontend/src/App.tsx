@@ -83,12 +83,12 @@ const ANALYSIS_STEPS = [
 ];
 
 const PRESETS = [
-  'AI',
+  'AI India',
   '#cybersecurity',
-  'Mumbai floods',
-  '@RiverLinkUpdate',
+  '@BBCWorld',
+  'Chandrayaan 3',
   'Generative AI',
-  'Open Source',
+  '@nexus_sih26152_bot',
 ];
 
 const fmt = (value: string | number | null | undefined) => {
@@ -124,16 +124,11 @@ export default function App({ onNavigateHome }: { onNavigateHome?: () => void } 
   const [activeQuery, setActiveQuery] = useState('');
   const [analysisStep, setAnalysisStep] = useState(0);
 
-  // Active Source Selection for Investigation
-  const [selectedSources, setSelectedSources] = useState({
+  // Active Source Selection for Investigation (Focused on Telegram, YouTube, and X)
+  const [selectedSources, setSelectedSources] = useState<Record<string, boolean>>({
     telegram: true,
-    x: true,
     youtube: true,
-    reddit: false,
-    bluesky: false,
-    mastodon: false,
-    instagram: false,
-    facebook: false,
+    x: true,
   });
 
   // Core Intelligence Data Models

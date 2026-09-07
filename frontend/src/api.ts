@@ -250,80 +250,18 @@ export interface CollectorStatus {
   note: string;
 }
 
-import demoData from './demoData.json';
-
-const DIRECT_API = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000';
+const DIRECT_API = import.meta.env.VITE_API_BASE_URL || '';
 const JAVA_API = import.meta.env.VITE_JAVA_GATEWAY_URL || 'http://127.0.0.1:8080';
 const USE_GATEWAY = String(import.meta.env.VITE_USE_JAVA_GATEWAY || 'false').toLowerCase() === 'true';
 export const API_BASE = USE_GATEWAY ? `${JAVA_API}/api/gateway` : DIRECT_API;
 
-function getFallbackData(path: string): unknown | null {
-  const cleanPath = path.split('?')[0];
-  if (cleanPath === '/health') return demoData.health;
-  if (cleanPath === '/api/connectors/status') return demoData.connectors;
-  if (cleanPath === '/api/overview') return demoData.overview;
-  if (cleanPath === '/api/timeline') return demoData.timeline;
-  if (cleanPath === '/api/narratives' || cleanPath === '/api/trends') return demoData.narratives;
-  if (cleanPath.startsWith('/api/narratives/')) {
-    const id = decodeURIComponent(cleanPath.replace('/api/narratives/', ''));
-    const details = demoData.narrativeDetails as Record<string, unknown>;
-    if (details[id]) return details[id];
-    const firstKey = Object.keys(details)[0];
-    return firstKey ? details[firstKey] : null;
-  }
-  if (cleanPath === '/api/network') return demoData.network;
-  if (cleanPath === '/api/demographics') return demoData.demographics;
-  if (cleanPath === '/api/alerts') return demoData.alerts;
-  if (cleanPath === '/api/events') return demoData.events;
-  if (cleanPath.startsWith('/api/events/')) {
-    const id = decodeURIComponent(cleanPath.replace('/api/events/', ''));
-    const eventList = (demoData.events as { events?: Array<{ id: string }> })?.events || [];
-    const found = eventList.find((e) => e.id === id);
-    return found || eventList[0] || null;
-  }
-  if (cleanPath === '/api/collector/status') return demoData.collector;
-  if (cleanPath === '/api/demo/seed' || cleanPath === '/api/workspace/reset') {
-    return { status: 'ok', inserted: 67, total_events: 67, message: 'Demo dataset active (pre-seeded)' };
-  }
-  if (cleanPath === '/api/search/workspace') {
-    return {
-      received: 67,
-      inserted: 67,
-      duplicates: 0,
-      total_events: 67,
-      query: 'RiverLink',
-      search_session_id: 'demo-session',
-      reset: true,
-      message: 'Operating in pre-seeded demo mode (67 evidence-backed events active).',
-      sources: {
-        telegram: { state: 'REPLAY', received: 22, connector: 'telegram' },
-        youtube: { state: 'REPLAY', received: 14, connector: 'youtube' },
-        bluesky: { state: 'REPLAY', received: 11, connector: 'bluesky' },
-        reddit: { state: 'REPLAY', received: 12, connector: 'reddit' },
-        mastodon: { state: 'REPLAY', received: 8, connector: 'mastodon' },
-      },
-    };
-  }
-  return null;
-}
-
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const isLocalhostApi = API_BASE.includes('127.0.0.1') || API_BASE.includes('localhost');
-  const isPublicHost = typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1';
-
-  // If on a public URL (like vercel.app) and pointing to localhost, use fallback immediately to avoid mixed-content/timeout errors
-  if (isLocalhostApi && isPublicHost) {
-    const fallback = getFallbackData(path);
-    if (fallback !== null) {
-      return fallback as T;
-    }
-  }
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 45000);
 
   try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 25000);
-
-    const response = await fetch(`${API_BASE}${path}`, {
+    const url = `${API_BASE}${path}`;
+    const response = await fetch(url, {
       ...init,
       signal: init?.signal || controller.signal,
       headers: {
@@ -331,7 +269,6 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
         ...(init?.headers || {}),
       },
     });
-    clearTimeout(timeoutId);
 
     if (!response.ok) {
       const raw = await response.text();
@@ -349,14 +286,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     const contentType = response.headers.get('content-type') || '';
     if (!contentType.includes('application/json')) return (await response.text()) as T;
     return response.json() as Promise<T>;
-  } catch (err) {
-    if (isPublicHost) {
-      const fallback = getFallbackData(path);
-      if (fallback !== null) {
-        return fallback as T;
-      }
-    }
-    throw err;
+  } finally {
+    clearTimeout(timeoutId);
   }
 }
 
@@ -399,9 +330,9 @@ export const api = {
       enable_telegram: options?.enableTelegram ?? true,
       enable_x: options?.enableX ?? true,
       enable_youtube: options?.enableYouTube ?? true,
-      enable_bluesky: options?.enableBluesky ?? true,
-      enable_reddit: options?.enableReddit ?? true,
-      enable_mastodon: options?.enableMastodon ?? true,
+      enable_bluesky: options?.enableBluesky ?? false,
+      enable_reddit: options?.enableReddit ?? false,
+      enable_mastodon: options?.enableMastodon ?? false,
       telegram_channel: options?.telegramChannel || null,
       instagram_profile: options?.instagramProfile || null,
     }),
