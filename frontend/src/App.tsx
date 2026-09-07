@@ -164,14 +164,7 @@ export default function App({ onNavigateHome }: { onNavigateHome?: () => void } 
   const [notice, setNotice] = useState<string | null>(null);
   const importRef = useRef<HTMLInputElement>(null);
 
-  // Backend API URL & Health State
-  const [showApiModal, setShowApiModal] = useState<boolean>(() => {
-    if (typeof window !== 'undefined') {
-      return window.location.hash.includes('configure') || window.location.search.includes('configure=true');
-    }
-    return false;
-  });
-  const [apiUrlInput, setApiUrlInput] = useState(getCustomApiUrl() || '');
+  // Backend Health State
   const [backendHealth, setBackendHealth] = useState<'checking' | 'connected' | 'disconnected'>('checking');
 
   // Check Backend Health
@@ -182,21 +175,6 @@ export default function App({ onNavigateHome }: { onNavigateHome?: () => void } 
       .catch(() => { if (active) setBackendHealth('disconnected'); });
     return () => { active = false; };
   }, []);
-
-  const handleSaveApiUrl = async () => {
-    setCustomApiUrl(apiUrlInput);
-    setShowApiModal(false);
-    setNotice('Backend API URL updated. Reconnecting...');
-    try {
-      await api.health();
-      setBackendHealth('connected');
-      await loadAll();
-      setNotice('Connected to backend successfully.');
-    } catch {
-      setBackendHealth('disconnected');
-      setError('Could not connect to specified backend URL. Please verify the URL.');
-    }
-  };
 
   // Load All Intelligence Endpoints
   const loadAll = useCallback(async () => {
@@ -284,118 +262,6 @@ export default function App({ onNavigateHome }: { onNavigateHome?: () => void } 
     setViewMode('report');
   };
 
-  // Backend API Settings Modal Renderer
-  const renderApiModal = () => {
-    if (!showApiModal) return null;
-    return (
-      <div
-        style={{
-          position: 'fixed',
-          inset: 0,
-          zIndex: 9999,
-          backgroundColor: 'rgba(0, 0, 0, 0.75)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          padding: 16,
-          backdropFilter: 'blur(4px)',
-        }}
-      >
-        <div
-          style={{
-            width: '100%',
-            maxWidth: 480,
-            borderRadius: 16,
-            backgroundColor: '#0F172A',
-            border: '1px solid rgba(255, 255, 255, 0.1)',
-            padding: 24,
-            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.7)',
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Settings size={18} className="text-blue-400" />
-              <h3 style={{ margin: 0, fontSize: 16, fontWeight: 600, color: '#F8FAFC' }}>Backend API Connection</h3>
-            </div>
-            <button
-              type="button"
-              onClick={() => setShowApiModal(false)}
-              style={{ background: 'transparent', border: 0, color: '#94A3B8', fontSize: 18, cursor: 'pointer' }}
-            >
-              ✕
-            </button>
-          </div>
-
-          <p style={{ fontSize: 12.5, color: '#94A3B8', marginBottom: 16, lineHeight: 1.5 }}>
-            When using the deployed Vercel URL, set the public HTTPS address of your deployed backend (e.g. Render, Railway, or ngrok tunnel) so live YouTube & Telegram requests can reach the AI pipeline.
-          </p>
-
-          <div style={{ marginBottom: 16 }}>
-            <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: '#CBD5E1', marginBottom: 6 }}>
-              Backend API URL
-            </label>
-            <input
-              type="text"
-              value={apiUrlInput}
-              onChange={(e) => setApiUrlInput(e.target.value)}
-              placeholder="e.g. https://nexus-backend.onrender.com or http://localhost:8000"
-              style={{
-                width: '100%',
-                padding: '8px 12px',
-                borderRadius: 8,
-                backgroundColor: '#1E293B',
-                border: '1px solid rgba(255, 255, 255, 0.15)',
-                color: '#F8FAFC',
-                fontSize: 13,
-              }}
-            />
-            <span style={{ display: 'block', fontSize: 11, color: '#64748B', marginTop: 4 }}>
-              Current active: <code>{getEffectiveApiBase() || 'Relative / Localhost'}</code>
-            </span>
-          </div>
-
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-            <button
-              type="button"
-              onClick={() => {
-                setApiUrlInput('');
-                setCustomApiUrl('');
-                setShowApiModal(false);
-                void loadAll();
-              }}
-              style={{
-                padding: '8px 14px',
-                borderRadius: 8,
-                border: '1px solid rgba(255, 255, 255, 0.1)',
-                background: 'transparent',
-                color: '#94A3B8',
-                fontSize: 12,
-                cursor: 'pointer',
-              }}
-            >
-              Reset Default
-            </button>
-            <button
-              type="button"
-              onClick={() => void handleSaveApiUrl()}
-              style={{
-                padding: '8px 16px',
-                borderRadius: 8,
-                border: 0,
-                background: '#2563EB',
-                color: '#FFF',
-                fontSize: 12,
-                fontWeight: 600,
-                cursor: 'pointer',
-              }}
-            >
-              Save & Connect
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  };
 
   // Actions Runner
   const action = async (label: string, fn: () => Promise<unknown>) => {
@@ -612,24 +478,6 @@ export default function App({ onNavigateHome }: { onNavigateHome?: () => void } 
           </div>
 
           <div className="report-topbar-actions">
-            <button
-              type="button"
-              className="btn-minimal"
-              onClick={() => setShowApiModal(true)}
-              title="Configure Backend API URL"
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
-            >
-              <span
-                style={{
-                  width: 7,
-                  height: 7,
-                  borderRadius: 999,
-                  backgroundColor: backendHealth === 'connected' ? '#34D399' : '#FBBF24',
-                }}
-              />
-              <Settings size={13} />
-              <span style={{ fontSize: 11 }}>{backendHealth === 'connected' ? 'API Live' : 'Configure API'}</span>
-            </button>
             {onNavigateHome && (
               <button
                 type="button"
@@ -681,48 +529,6 @@ export default function App({ onNavigateHome }: { onNavigateHome?: () => void } 
               </button>
             </form>
 
-            {backendHealth === 'disconnected' && (
-              <div
-                style={{
-                  marginTop: 12,
-                  padding: '8px 14px',
-                  borderRadius: 8,
-                  backgroundColor: 'rgba(245, 158, 11, 0.08)',
-                  border: '1px solid rgba(245, 158, 11, 0.25)',
-                  color: '#FDE68A',
-                  fontSize: 12,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  gap: 10,
-                  width: '100%',
-                  maxWidth: 600,
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <AlertTriangle size={15} className="text-amber-400 shrink-0" />
-                  <span>
-                    Backend not connected. To run live scans from the cloud, connect your backend URL or run locally on localhost:5173.
-                  </span>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setShowApiModal(true)}
-                  style={{
-                    background: 'rgba(245, 158, 11, 0.2)',
-                    border: '1px solid rgba(245, 158, 11, 0.4)',
-                    borderRadius: 6,
-                    padding: '3px 8px',
-                    color: '#FFF',
-                    fontSize: 11,
-                    cursor: 'pointer',
-                    whiteSpace: 'nowrap',
-                  }}
-                >
-                  Set URL
-                </button>
-              </div>
-            )}
 
             {/* Unobtrusive Source Selector */}
             <div className="input-sources-wrap">
@@ -778,7 +584,6 @@ export default function App({ onNavigateHome }: { onNavigateHome?: () => void } 
             </button>
           </div>
         </main>
-        {renderApiModal()}
       </div>
     );
   }
@@ -843,24 +648,6 @@ export default function App({ onNavigateHome }: { onNavigateHome?: () => void } 
           </div>
 
           <div className="report-topbar-actions">
-            <button
-              type="button"
-              className="btn-minimal"
-              onClick={() => setShowApiModal(true)}
-              title="Backend API Configuration"
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
-            >
-              <span
-                style={{
-                  width: 7,
-                  height: 7,
-                  borderRadius: 999,
-                  backgroundColor: backendHealth === 'connected' ? '#34D399' : '#FBBF24',
-                }}
-              />
-              <Settings size={13} />
-              <span style={{ fontSize: 11 }}>{backendHealth === 'connected' ? 'API Live' : 'Configure API'}</span>
-            </button>
             <button
               type="button"
               className="btn-minimal"
@@ -1336,7 +1123,6 @@ export default function App({ onNavigateHome }: { onNavigateHome?: () => void } 
           </section>
 
         </article>
-        {renderApiModal()}
       </div>
     );
   }
@@ -1917,7 +1703,6 @@ export default function App({ onNavigateHome }: { onNavigateHome?: () => void } 
           )}
         </main>
       </div>
-      {renderApiModal()}
     </div>
   );
 }
