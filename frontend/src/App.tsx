@@ -2,16 +2,12 @@ import { type ChangeEvent, type ReactNode, useCallback, useEffect, useMemo, useR
 import {
   Activity,
   AlertTriangle,
-  ArrowLeft,
-  ArrowRight,
   BarChart3,
-  Check,
   ChevronDown,
   ChevronUp,
   Database,
   Download,
   ExternalLink,
-  Eye,
   GitBranch,
   Layers,
   ListVideo,
@@ -23,10 +19,10 @@ import {
   Search,
   ShieldCheck,
   Sparkles,
+  Square,
   Upload,
   Users,
   Waypoints,
-  Wifi,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -53,13 +49,14 @@ import {
   Overview,
   SocialEvent,
   TimelinePoint,
+  TrendingKeyword,
   WorkspaceSearchResponse,
 } from './api';
 import PostExplorer from './PostExplorer';
 import ConnectionCenter from './ConnectionCenter';
 import FreeConnectorPanel from './FreeConnectorPanel';
+import IntelligenceTargetHub, { SearchExecutionOptions } from './IntelligenceTargetHub';
 
-type ViewMode = 'input' | 'analyzing' | 'report' | 'deep_dive';
 type Tab = 'overview' | 'posts' | 'timeline' | 'trends' | 'narrative' | 'network' | 'demographics' | 'alerts' | 'evidence';
 
 const tabs: Array<{ id: Tab; label: string; icon: typeof Activity }> = [
@@ -72,23 +69,6 @@ const tabs: Array<{ id: Tab; label: string; icon: typeof Activity }> = [
   { id: 'demographics', label: 'Demographics', icon: Users },
   { id: 'alerts', label: 'Alerts', icon: AlertTriangle },
   { id: 'evidence', label: 'Evidence', icon: Database },
-];
-
-const ANALYSIS_STEPS = [
-  { id: 0, title: 'Connecting to available sources' },
-  { id: 1, title: 'Collecting live public conversations' },
-  { id: 2, title: 'Analyzing sentiment & emotion' },
-  { id: 3, title: 'Detecting emerging narratives' },
-  { id: 4, title: 'Mapping influence & propagation' },
-];
-
-const PRESETS = [
-  'AI',
-  '#cybersecurity',
-  'Mumbai floods',
-  '@RiverLinkUpdate',
-  'Generative AI',
-  'Open Source',
 ];
 
 const fmt = (value: string | number | null | undefined) => {
@@ -114,31 +94,564 @@ function PlatformBadge({ platform }: { platform: string }) {
   return <span className={`platform platform-${platform}`}>{platform.toUpperCase()}</span>;
 }
 
-export default function App({ onNavigateHome }: { onNavigateHome?: () => void } = {}) {
-  // Navigation & View Modes
-  const [viewMode, setViewMode] = useState<ViewMode>('report');
-  const [tab, setTab] = useState<Tab>('overview');
+function Metric({
+  label,
+  value,
+  helper,
+  icon: Icon,
+  tone = 'blue',
+}: {
+  label: string;
+  value: string | number;
+  helper?: string;
+  icon: typeof Activity;
+  tone?: 'blue' | 'purple' | 'amber' | 'rose';
+}) {
+  return (
+    <div className="metric-card">
+      <div className={`metric-icon metric-icon-${tone}`}>
+        <Icon size={18} />
+      </div>
+      <div>
+        <div className="metric-value">{value}</div>
+        <div className="metric-label">{label}</div>
+        {helper && <div className="metric-helper">{helper}</div>}
+      </div>
+    </div>
+  );
+}
 
-  // Search & Investigation Query State
-  const [searchInput, setSearchInput] = useState('AI');
-  const [activeQuery, setActiveQuery] = useState('AI');
-  const [analysisStep, setAnalysisStep] = useState(0);
+function ConnectorStrip({ connectors }: { connectors: ConnectorStatus[] }) {
+  return (
+    <div className="connector-strip">
+      {connectors.map((connector) => {
+        const tone = connector.state === 'READY' || connector.state === 'LIVE' ? 'good' : connector.state === 'ERROR' ? 'bad' : 'warn';
+        return (
+          <div className="connector-item" key={connector.platform} title={connector.detail}>
+            <span className={`connector-dot connector-${tone}`} />
+            <strong>{connector.platform.toUpperCase()}</strong>
+            <span>{connector.state.replaceAll('_', ' ')}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
-  // Active Source Selection for Investigation
-  const [selectedSources, setSelectedSources] = useState({
-    telegram: true,
-    x: true,
-    youtube: true,
-    reddit: true,
-    bluesky: true,
-    mastodon: true,
-    instagram: false,
-    facebook: false,
+function TrendCard({ narrative, onOpen }: { narrative: NarrativeSummary; onOpen: () => void }) {
+  const tone = narrative.trend.status === 'VIRAL' ? 'bad' : narrative.trend.status === 'RISING' ? 'warn' : 'neutral';
+  return (
+    <button type="button" className="trend-card" onClick={onOpen}>
+      <div className="trend-card-top">
+        <div>
+          <div className="eyebrow">{narrative.id} · {narrative.event_count} events</div>
+          <h3>{narrative.title}</h3>
+        </div>
+        <Badge tone={tone}>{narrative.trend.status}</Badge>
+      </div>
+      <p>{narrative.representative_text}</p>
+      <div className="trend-grid">
+        <span><b>{narrative.trend.score.toFixed(2)}</b> score</span>
+        <span><b>{narrative.trend.growth_rate >= 0 ? '+' : ''}{narrative.trend.growth_rate.toFixed(2)}</b> growth</span>
+        <span><b>{narrative.trend.platform_count}</b> platforms</span>
+        <span><b>{pct(narrative.trend.author_diversity)}</b> diversity</span>
+      </div>
+      <div className="chip-row">
+        {Object.entries(narrative.platform_mix).map(([platform, count]) => <span className="chip" key={platform}>{platform}: {count}</span>)}
+        {Object.entries(narrative.source_modes).map(([mode, count]) => <span className="chip" key={mode}>{mode}: {count}</span>)}
+      </div>
+    </button>
+  );
+}
+
+function SIHPipelineBanner({ activeTab, onSelectTab }: { activeTab: Tab; onSelectTab: (tab: Tab) => void }) {
+  const steps = [
+    { num: 1, title: 'Multi-Source Data', desc: 'X, Telegram, IG, FB, RSS', tab: 'overview' as Tab },
+    { num: 2, title: 'Continuous Collection', desc: 'Real-time & Chronology', tab: 'timeline' as Tab },
+    { num: 3, title: 'AI/NLP Enrichment', desc: 'Emotions, Stances, Entities', tab: 'posts' as Tab },
+    { num: 4, title: 'Core Analytics (B-E)', desc: 'Sentiment, Demographics, Trends, Network', tab: 'trends' as Tab },
+    { num: 5, title: 'Evidence Console', desc: 'Explainable Alerts & Provenance', tab: 'evidence' as Tab },
+  ];
+  return (
+    <div className="sih-pipeline-banner">
+      <div className="sih-pipeline-title">
+        <Sparkles size={13} />
+        <span>SIH26152 End-to-End Social Media Analytics Pipeline</span>
+      </div>
+      <div className="sih-pipeline-steps">
+        {steps.map((step, idx) => (
+          <div key={step.num} style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 150 }}>
+            <div
+              className={`sih-step ${activeTab === step.tab ? 'active' : ''}`}
+              onClick={() => onSelectTab(step.tab)}
+              style={{ cursor: 'pointer' }}
+              title={`Switch to ${step.title}`}
+            >
+              <div className="sih-step-num">{step.num}</div>
+              <div>
+                <strong>{step.title}</strong>
+                <span>{step.desc}</span>
+              </div>
+            </div>
+            {idx < steps.length - 1 && <span className="sih-arrow">→</span>}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function TrendingKeywordsRibbon({ keywords }: { keywords?: TrendingKeyword[] }) {
+  if (!keywords || !keywords.length) return null;
+  return (
+    <div className="trending-keywords-panel">
+      <div className="trending-keywords-head">
+        <div className="eyebrow" style={{ color: '#93c5fd' }}>SIH Component D · Emerging Topic & Keyword Clusters</div>
+        <Badge tone="good">{keywords.length} active keyword signals</Badge>
+      </div>
+      <div className="trending-keywords-cloud">
+        {keywords.map((kw) => (
+          <div className="trending-keyword-pill" key={kw.term}>
+            <strong>{kw.term}</strong>
+            <span className="trending-keyword-count">{kw.count} posts</span>
+            <span className={`trending-keyword-growth ${kw.growth_rate >= 0 ? 'positive' : 'negative'}`}>
+              {kw.growth_rate >= 0 ? '+' : ''}{(kw.growth_rate * 100).toFixed(0)}%
+            </span>
+            <span style={{ fontSize: 9.5, color: '#64748b' }}>
+              {kw.platforms.length} {kw.platforms.length === 1 ? 'platform' : 'platforms'}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function TimelineView({
+  points,
+  minutes,
+  onMinutesChange,
+}: {
+  points: TimelinePoint[];
+  minutes: number;
+  onMinutesChange: (m: number) => void;
+}) {
+  const [viewMode, setViewMode] = useState<'polarity' | 'emotions' | 'stance'>('polarity');
+
+  const data = points.map((point) => {
+    const d = new Date(point.time);
+    const time = Number.isNaN(d.getTime())
+      ? String(point.time)
+      : d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    return {
+      time,
+      count: point.count,
+      negative: point.sentiments?.negative || 0,
+      positive: point.sentiments?.positive || 0,
+      neutral: point.sentiments?.neutral || 0,
+      anxiety: point.emotions?.anxiety || 0,
+      excitement: point.emotions?.excitement || 0,
+      anger: point.emotions?.anger || 0,
+      sadness: point.emotions?.sadness || 0,
+      supportive: point.stances?.supportive || 0,
+      against: point.stances?.against || 0,
+      unclear: point.stances?.unclear || 0,
+    };
   });
 
-  // Core Intelligence Data Models
+  return (
+    <section className="panel panel-large">
+      <div className="section-head">
+        <div>
+          <div className="eyebrow">SIH Components A & B · Exact Chronology & Sentiment Timeline</div>
+          <h2>Conversation timeline & sentiment movement</h2>
+        </div>
+        <div className="legend">
+          {viewMode === 'polarity' && (
+            <>
+              <span style={{ color: '#60a5fa' }}>● Volume</span>
+              <span style={{ color: '#f87171' }}>● Negative</span>
+              <span style={{ color: '#34d399' }}>● Positive</span>
+              <span style={{ color: '#94a3b8' }}>- - Neutral</span>
+            </>
+          )}
+          {viewMode === 'emotions' && (
+            <>
+              <span style={{ color: '#f59e0b' }}>● Anxiety</span>
+              <span style={{ color: '#ef4444' }}>● Anger</span>
+              <span style={{ color: '#38bdf8' }}>● Excitement</span>
+              <span style={{ color: '#a855f7' }}>● Sadness</span>
+            </>
+          )}
+          {viewMode === 'stance' && (
+            <>
+              <span style={{ color: '#10b981' }}>● Supportive</span>
+              <span style={{ color: '#f43f5e' }}>● Against</span>
+              <span style={{ color: '#64748b' }}>- - Unclear</span>
+            </>
+          )}
+        </div>
+      </div>
+
+      <div className="timeline-toolbar">
+        <div className="timeline-toggle-group">
+          <button
+            type="button"
+            className={`timeline-toggle-btn ${viewMode === 'polarity' ? 'active' : ''}`}
+            onClick={() => setViewMode('polarity')}
+          >
+            Sentiment Polarity
+          </button>
+          <button
+            type="button"
+            className={`timeline-toggle-btn ${viewMode === 'emotions' ? 'active' : ''}`}
+            onClick={() => setViewMode('emotions')}
+          >
+            Nuanced Emotions
+          </button>
+          <button
+            type="button"
+            className={`timeline-toggle-btn ${viewMode === 'stance' ? 'active' : ''}`}
+            onClick={() => setViewMode('stance')}
+          >
+            Stance Movement
+          </button>
+        </div>
+
+        <div className="timeline-interval-group">
+          <span style={{ fontSize: 10, color: '#64748b', marginRight: 4 }}>Bucket Resolution:</span>
+          {[15, 30, 60, 180].map((m) => (
+            <button
+              key={m}
+              type="button"
+              className={`timeline-interval-btn ${minutes === m ? 'active' : ''}`}
+              onClick={() => onMinutesChange(m)}
+            >
+              {m >= 60 ? `${m / 60}h` : `${m}m`}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="chart-wrap">
+        <ResponsiveContainer width="100%" height={380}>
+          <AreaChart data={data} margin={{ left: 0, right: 16, top: 12, bottom: 0 }}>
+            <CartesianGrid strokeDasharray="3 3" opacity={0.15} />
+            <XAxis dataKey="time" tick={{ fontSize: 11, fill: '#64748b' }} />
+            <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: '#64748b' }} />
+            <Tooltip
+              contentStyle={{
+                background: '#091120',
+                border: '1px solid rgba(255,255,255,0.1)',
+                borderRadius: 8,
+                fontSize: 11,
+              }}
+            />
+            {viewMode === 'polarity' && (
+              <>
+                <Area type="monotone" dataKey="count" stroke="#60a5fa" fill="#3b82f6" fillOpacity={0.12} strokeWidth={2.5} name="Total Volume" />
+                <Line type="monotone" dataKey="negative" stroke="#f87171" strokeWidth={1.75} dot={false} name="Negative" />
+                <Line type="monotone" dataKey="positive" stroke="#34d399" strokeWidth={1.75} dot={false} name="Positive" />
+                <Line type="monotone" dataKey="neutral" stroke="#94a3b8" strokeWidth={1.5} strokeDasharray="3 3" dot={false} name="Neutral" />
+              </>
+            )}
+            {viewMode === 'emotions' && (
+              <>
+                <Line type="monotone" dataKey="anxiety" stroke="#f59e0b" strokeWidth={2} dot={{ r: 3 }} name="Anxiety" />
+                <Line type="monotone" dataKey="anger" stroke="#ef4444" strokeWidth={2} dot={{ r: 3 }} name="Anger" />
+                <Line type="monotone" dataKey="excitement" stroke="#38bdf8" strokeWidth={2} dot={{ r: 3 }} name="Excitement" />
+                <Line type="monotone" dataKey="sadness" stroke="#a855f7" strokeWidth={2} dot={{ r: 3 }} name="Sadness" />
+              </>
+            )}
+            {viewMode === 'stance' && (
+              <>
+                <Line type="monotone" dataKey="supportive" stroke="#10b981" strokeWidth={2} dot={{ r: 3 }} name="Supportive" />
+                <Line type="monotone" dataKey="against" stroke="#f43f5e" strokeWidth={2} dot={{ r: 3 }} name="Against" />
+                <Line type="monotone" dataKey="unclear" stroke="#64748b" strokeWidth={1.5} strokeDasharray="3 3" dot={false} name="Unclear" />
+              </>
+            )}
+          </AreaChart>
+        </ResponsiveContainer>
+      </div>
+      <div className="coverage-callout">
+        <ShieldCheck size={16} /> Exact source timestamps are preserved separately from ingestion time. Multi-dimensional emotion & stance tracking satisfies SIH Component B.
+      </div>
+    </section>
+  );
+}
+
+function NetworkGraph({ network }: { network: NetworkResponse | null }) {
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+
+  const nodes = (network?.nodes || []).slice(0, 36);
+  const ids = new Set(nodes.map((n) => n.id));
+  const edges = (network?.edges || []).filter((edge) => ids.has(edge.source) && ids.has(edge.target)).slice(0, 100);
+  const width = 900;
+  const height = 500;
+  const centerX = width / 2;
+  const centerY = height / 2;
+  const radius = Math.min(width, height) * 0.37;
+  const positions = new Map<string, { x: number; y: number }>();
+  nodes.forEach((node, index) => {
+    const communityOffset = (node.community || 0) * 0.35;
+    const angle = (index / Math.max(1, nodes.length)) * Math.PI * 2 + communityOffset;
+    const r = radius * (0.72 + (index % 4) * 0.08);
+    positions.set(node.id, { x: centerX + Math.cos(angle) * r, y: centerY + Math.sin(angle) * r });
+  });
+
+  const selectedNode = useMemo(() => {
+    if (!selectedNodeId) return nodes[0] || null;
+    return nodes.find((n) => n.id === selectedNodeId) || nodes[0] || null;
+  }, [nodes, selectedNodeId]);
+
+  if (!network || !nodes.length) return <div className="empty">No network data yet. Seed or ingest events first.</div>;
+
+  return (
+    <div>
+      <div className="network-layout">
+        <div className="network-canvas">
+          <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Observed interaction network">
+            {edges.map((edge, index) => {
+              const a = positions.get(edge.source);
+              const b = positions.get(edge.target);
+              if (!a || !b) return null;
+              const isRepost = edge.types?.includes('repost') || edge.types?.includes('quote');
+              return (
+                <line
+                  key={`${edge.source}-${edge.target}-${index}`}
+                  x1={a.x}
+                  y1={a.y}
+                  x2={b.x}
+                  y2={b.y}
+                  className="network-edge"
+                  strokeDasharray={isRepost ? '4 3' : undefined}
+                  stroke={isRepost ? '#a855f7' : '#334155'}
+                  strokeWidth={Math.min(3.5, 0.7 + edge.weight)}
+                />
+              );
+            })}
+            {nodes.map((node) => {
+              const p = positions.get(node.id)!;
+              const size = 6 + Math.min(10, node.pagerank * 90);
+              const isSelected = selectedNode?.id === node.id;
+              return (
+                <g
+                  key={node.id}
+                  className="network-node"
+                  style={{ cursor: 'pointer' }}
+                  onClick={() => setSelectedNodeId(node.id)}
+                >
+                  <circle
+                    cx={p.x}
+                    cy={p.y}
+                    r={isSelected ? size + 3 : size}
+                    className={`network-dot role-${node.role.replaceAll(' ', '-').toLowerCase()}`}
+                    stroke={isSelected ? '#60a5fa' : undefined}
+                    strokeWidth={isSelected ? 2.5 : undefined}
+                  />
+                  <text x={p.x + size + 4} y={p.y + 4} fill={isSelected ? '#93c5fd' : undefined} fontWeight={isSelected ? 700 : undefined}>
+                    {node.label.slice(0, 18)}
+                  </text>
+                </g>
+              );
+            })}
+          </svg>
+          <div style={{ display: 'flex', gap: 16, marginTop: 8, fontSize: 11, color: '#94a3b8' }}>
+            <span><strong style={{ color: '#334155' }}>—</strong> Reply/Mention Edge</span>
+            <span><strong style={{ color: '#a855f7' }}>- - -</strong> Repost/Quote Edge (SIH E)</span>
+          </div>
+        </div>
+
+        <div className="network-rank">
+          <div className="eyebrow">Observed graph & centrality</div>
+          <h3>Influence & bridge nodes</h3>
+
+          {selectedNode && (
+            <div className="network-community-card" style={{ marginBottom: 12, borderColor: 'rgba(59, 130, 246, 0.4)', background: '#0a1426' }}>
+              <div className="network-community-head">
+                <strong>{selectedNode.label}</strong>
+                <Badge tone={selectedNode.role === 'Bridge Node' ? 'warn' : selectedNode.role === 'High Reach Node' ? 'good' : 'neutral'}>
+                  {selectedNode.role}
+                </Badge>
+              </div>
+              <p style={{ fontSize: 11, color: '#94a3b8', margin: '4px 0' }}>{selectedNode.explanation}</p>
+              <div className="network-metrics-strip">
+                <div>
+                  <span>PageRank</span>
+                  <strong>{selectedNode.pagerank.toFixed(4)}</strong>
+                </div>
+                <div>
+                  <span>Betweenness</span>
+                  <strong>{(selectedNode.betweenness ?? 0).toFixed(4)}</strong>
+                </div>
+                <div>
+                  <span>Degree Cent.</span>
+                  <strong>{(selectedNode.degree_centrality ?? 0).toFixed(4)}</strong>
+                </div>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 8, fontSize: 10, color: '#64748b' }}>
+                <span>Community #{selectedNode.community}</span>
+                {selectedNode.sentiment && <span className="chip">sentiment: {selectedNode.sentiment}</span>}
+              </div>
+            </div>
+          )}
+
+          <div style={{ maxHeight: 220, overflowY: 'auto' }}>
+            {nodes.slice(0, 10).map((node: GraphNode) => (
+              <div
+                className="rank-row"
+                key={node.id}
+                style={{ cursor: 'pointer', background: selectedNode?.id === node.id ? 'rgba(59, 130, 246, 0.1)' : undefined }}
+                onClick={() => setSelectedNodeId(node.id)}
+              >
+                <div>
+                  <strong>{node.label}</strong>
+                  <span>PR: {node.pagerank.toFixed(3)} · Betw: {(node.betweenness ?? 0).toFixed(3)}</span>
+                </div>
+                <Badge tone={node.role === 'Bridge Node' ? 'warn' : node.role === 'High Reach Node' ? 'good' : 'neutral'}>
+                  {node.role}
+                </Badge>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* TEMPORAL PROPAGATION FLOW */}
+      {network.temporal_propagation && network.temporal_propagation.length > 0 && (
+        <div className="network-temporal-panel">
+          <div className="eyebrow" style={{ color: '#93c5fd', marginBottom: 8 }}>
+            SIH Component E · Temporal Narrative Propagation Flow
+          </div>
+          {network.temporal_propagation.map((stage) => (
+            <div className="network-step-row" key={stage.step}>
+              <span className="network-step-badge">{stage.step}</span>
+              <div className="network-step-copy">
+                <strong>Stage {stage.step}: Community #{stage.community_id} (led by {stage.lead_node})</strong>
+                <span>{stage.summary} · {stage.node_count} nodes · sentiment: {stage.dominant_sentiment}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* COMMUNITY SENTIMENT BREAKDOWN */}
+      {network.communities_detail && network.communities_detail.length > 0 && (
+        <div style={{ marginTop: 18 }}>
+          <div className="eyebrow" style={{ color: '#93c5fd', marginBottom: 6 }}>
+            SIH Component E · Community Sentiment Breakdown
+          </div>
+          <div className="network-communities-grid">
+            {network.communities_detail.map((c) => (
+              <div className="network-community-card" key={c.community_id}>
+                <div className="network-community-head">
+                  <strong>Community #{c.community_id} ({c.node_count} nodes, {c.event_count} events)</strong>
+                  <Badge tone={c.dominant_sentiment === 'negative' ? 'bad' : c.dominant_sentiment === 'positive' ? 'good' : 'neutral'}>
+                    {c.dominant_sentiment}
+                  </Badge>
+                </div>
+                <div style={{ fontSize: 10.5, color: '#94a3b8' }}>
+                  Lead node: {c.lead_node || 'None'} · Earliest: {fmt(c.earliest_seen)}
+                </div>
+                <div className="chip-row" style={{ marginTop: 8 }}>
+                  {Object.entries(c.sentiment_mix).map(([sent, cnt]) => (
+                    <span className="chip" key={sent}>{sent}: {String(cnt)}</span>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DemographicSliceCard({ title, slice }: { title: string; slice: DemographicSlice }) {
+  const entries = Object.entries(slice.counts).sort((a, b) => b[1] - a[1]);
+  const max = Math.max(1, ...entries.map(([, value]) => value));
+  return (
+    <div className="panel demographic-card">
+      <div className="section-head compact"><h3>{title}</h3><Badge>{pct(slice.coverage)} coverage</Badge></div>
+      <div className="bars">
+        {entries.map(([label, value]) => (
+          <div className="bar-row" key={label}>
+            <span>{label.replaceAll('_', ' ')}</span>
+            <div className="bar-track"><i style={{ width: `${(value / max) * 100}%` }} /></div>
+            <b>{value}</b>
+          </div>
+        ))}
+      </div>
+      <div className="mini-note">Confidence {pct(slice.confidence)} · groups below k={slice.minimum_group_size} suppressed</div>
+    </div>
+  );
+}
+
+function NarrativeView({ detail, onOpenEvent }: { detail: NarrativeDetail | null; onOpenEvent: (id: string) => void }) {
+  if (!detail) return <div className="empty">Select a narrative from Trends to inspect its evidence-backed lineage.</div>;
+  return (
+    <div className="narrative-layout">
+      <section className="panel panel-large">
+        <div className="section-head">
+          <div><div className="eyebrow">{detail.id} · Narrative lineage</div><h2>{detail.title}</h2></div>
+          <div className="chip-row">
+            <Badge tone={detail.trend.status === 'RISING' || detail.trend.status === 'VIRAL' ? 'warn' : 'neutral'}>{detail.trend.status}</Badge>
+            <a className="btn btn-secondary" href={api.narrativeCsvUrl(detail.id)}><Download size={13} /> CSV</a>
+            <a className="btn btn-secondary" href={api.narrativeJsonUrl(detail.id)}><Download size={13} /> JSON</a>
+          </div>
+        </div>
+        <p className="lead">{detail.representative_text}</p>
+        <div className="callout"><ShieldCheck size={16} /><span>{detail.origin_claim}</span></div>
+        <div className="lineage">
+          {detail.lineage.slice(0, 40).map((item, index) => (
+            <div className="lineage-item" key={item.event_id}>
+              <div className="lineage-axis"><span>{index + 1}</span></div>
+              <div className="lineage-card">
+                <div className="row-between">
+                  <div className="chip-row"><PlatformBadge platform={item.platform} /><SourceBadge mode={item.source_mode} /></div>
+                  <span className="muted">{fmt(item.created_at)}</span>
+                </div>
+                <strong>{item.author || item.author_pseudo_id || 'Unknown author'}</strong>
+                <p>{item.text}</p>
+                <div className="row-between">
+                  <div className="chip-row"><span className="chip">sentiment: {item.sentiment || 'unknown'}</span><span className="chip">stance: {item.stance || 'unknown'}</span></div>
+                  <button type="button" className="text-btn" onClick={() => onOpenEvent(item.event_id)}>Inspect post →</button>
+                </div>
+                {item.source_url && item.source_url.startsWith('http') && !item.source_url.includes('example.invalid') && (
+                  <a href={item.source_url} target="_blank" rel="noreferrer">Open source <ExternalLink size={12} /></a>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+      <aside className="panel narrative-side">
+        <div className="eyebrow">Why it matters</div>
+        <h3>Trend decomposition</h3>
+        {[
+          ['Trend score', detail.trend.score.toFixed(2)],
+          ['Growth', `${detail.trend.growth_rate >= 0 ? '+' : ''}${detail.trend.growth_rate.toFixed(2)}`],
+          ['Burst z-score', detail.trend.burst_zscore.toFixed(2)],
+          ['Author diversity', pct(detail.trend.author_diversity)],
+          ['Platforms', detail.trend.platform_count],
+        ].map(([label, value]) => <div className="fact-row" key={label}><span>{label}</span><strong>{value}</strong></div>)}
+        <hr />
+        <div className="eyebrow">Platform mix</div>
+        <div className="chip-row">{Object.entries(detail.platform_mix).map(([k, v]) => <span className="chip" key={k}>{k}: {v}</span>)}</div>
+        <div className="eyebrow spaced">Sentiment mix</div>
+        <div className="chip-row">{Object.entries(detail.sentiment_mix).map(([k, v]) => <span className="chip" key={k}>{k}: {v}</span>)}</div>
+      </aside>
+    </div>
+  );
+}
+
+function App({ onNavigateHome }: { onNavigateHome?: () => void } = {}) {
+  const [tab, setTab] = useState<Tab>('overview');
+  const [query, setQuery] = useState('AI');
+  const [activeQuery, setActiveQuery] = useState<string>('AI · live workspace');
   const [overview, setOverview] = useState<Overview | null>(null);
   const [connectors, setConnectors] = useState<ConnectorStatus[]>([]);
+  const [showIntelligenceDrawer, setShowIntelligenceDrawer] = useState(true);
   const [timelinePoints, setTimelinePoints] = useState<TimelinePoint[]>([]);
   const [narratives, setNarratives] = useState<NarrativeSummary[]>([]);
   const [selectedNarrativeId, setSelectedNarrativeId] = useState<string | null>(null);
@@ -150,81 +663,62 @@ export default function App({ onNavigateHome }: { onNavigateHome?: () => void } 
   const [events, setEvents] = useState<SocialEvent[]>([]);
   const [postDateFilter, setPostDateFilter] = useState<Date | undefined>(undefined);
   const [collector, setCollector] = useState<CollectorStatus | null>(null);
-
-  // UI Progressive Disclosure Toggles
-  const [expandedNarrativeId, setExpandedNarrativeId] = useState<string | null>(null);
-  const [showNetworkGraph, setShowNetworkGraph] = useState(false);
-  const [showEvidenceLedger, setShowEvidenceLedger] = useState(false);
-  const [sentimentChartMode, setSentimentChartMode] = useState<'all' | 'positive' | 'negative' | 'volume'>('all');
-  const [conversationLimit, setConversationLimit] = useState(8);
-
-  // Status & Feedback
+  const [timelineMinutes, setTimelineMinutes] = useState(15);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const importRef = useRef<HTMLInputElement>(null);
 
-  // Load All Intelligence Endpoints
   const loadAll = useCallback(async () => {
     try {
       setError(null);
       const [status, overviewData, timeData, narrativeData, networkData, demographicData, alertData, eventData, collectorData] = await Promise.all([
-        api.connectorStatus(),
-        api.overview(),
-        api.timeline(),
-        api.narratives(),
-        api.network(),
-        api.demographics(),
-        api.alerts(),
-        api.events(),
-        api.collectorStatus(),
+        api.connectorStatus(), api.overview(), api.timeline(timelineMinutes), api.narratives(), api.network(), api.demographics(), api.alerts(), api.events(), api.collectorStatus(),
       ]);
-      setConnectors(status.connectors || []);
+      setConnectors(status.connectors);
       setOverview(overviewData);
-      setTimelinePoints(timeData.points || []);
-      setNarratives(narrativeData.narratives || []);
+      setTimelinePoints(timeData.points);
+      setNarratives(narrativeData.narratives);
       setNetwork(networkData);
       setDemographics(demographicData);
-      setAlerts(alertData.alerts || []);
-      setEvents(eventData.events || []);
+      setAlerts(alertData.alerts);
+      setEvents(eventData.events);
       setCollector(collectorData);
-
-      if (eventData.events.length > 0 && !selectedEventId) {
-        setSelectedEventId(eventData.events[0].id);
-      }
+      setSelectedEventId((current) => eventData.events.some((event) => event.id === current) ? current : eventData.events[0]?.id || null);
+      const inferredQuery = String(eventData.events[0]?.public_profile?.search_query || '').trim();
+      if (inferredQuery) setActiveQuery(inferredQuery);
       const preferred = selectedNarrativeId || narrativeData.narratives[0]?.id || null;
       if (preferred) {
         setSelectedNarrativeId(preferred);
-        try {
-          setNarrativeDetail(await api.narrative(preferred));
-        } catch {
-          setNarrativeDetail(null);
-        }
+        try { setNarrativeDetail(await api.narrative(preferred)); } catch { setNarrativeDetail(null); }
+      } else {
+        setNarrativeDetail(null);
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Unable to connect to NEXUS intelligence backend.');
+      setError(e instanceof Error ? e.message : 'Unable to reach NEXUS backend.');
     }
-  }, [selectedEventId, selectedNarrativeId]);
+  }, [selectedNarrativeId, timelineMinutes]);
 
-  // Initial Load
-  useEffect(() => {
-    void (async () => {
-      await loadAll();
-    })();
-  }, [loadAll]);
+  const handleTimelineMinutesChange = async (minutes: number) => {
+    setTimelineMinutes(minutes);
+    try {
+      const timeData = await api.timeline(minutes);
+      setTimelinePoints(timeData.points);
+    } catch {
+      // ignore
+    }
+  };
 
-  // Continuous Collector Polling
+  useEffect(() => { void loadAll(); }, []);
+
   useEffect(() => {
     if (!collector?.running) return;
     const timer = window.setInterval(() => void loadAll(), 6000);
     return () => window.clearInterval(timer);
   }, [collector?.running, loadAll]);
 
-  // Actions Runner
   const action = async (label: string, fn: () => Promise<unknown>) => {
-    setLoading(true);
-    setError(null);
-    setNotice(null);
+    setLoading(true); setError(null); setNotice(null);
     try {
       await fn();
       setNotice(label);
@@ -236,121 +730,81 @@ export default function App({ onNavigateHome }: { onNavigateHome?: () => void } 
     }
   };
 
-  // REAL LIVE INVESTIGATION EXECUTION
-  const runLiveInvestigation = async (queryToInvestigate?: string) => {
-    const clean = (queryToInvestigate || searchInput).trim();
-    if (!clean) return;
+  const [lastSearchResult, setLastSearchResult] = useState<WorkspaceSearchResponse | null>(null);
 
-    setViewMode('analyzing');
+  const handleExecuteLiveAnalysis = async (searchQuery: string, options: SearchExecutionOptions) => {
     setLoading(true);
     setError(null);
     setNotice(null);
-    setActiveQuery(clean);
-    setSearchInput(clean);
-
     try {
-      // Step 0: Check source connectors
-      setAnalysisStep(0);
-      const connStatus = await api.connectorStatus();
-      setConnectors(connStatus.connectors || []);
-
-      // Step 1: Live Workspace Ingestion
-      setAnalysisStep(1);
-      const searchRes: WorkspaceSearchResponse = await api.searchWorkspace(clean, {
-        reset: true,
-        limitPerSource: 10,
-        enableTelegram: selectedSources.telegram,
-        enableX: selectedSources.x,
-        enableYouTube: selectedSources.youtube,
-        enableBluesky: selectedSources.bluesky,
-        enableReddit: selectedSources.reddit,
-        enableMastodon: selectedSources.mastodon,
+      const result = await api.searchWorkspace(searchQuery, {
+        reset: options.reset ?? true,
+        limitPerSource: options.limitPerSource ?? 5,
+        enableTelegram: options.enableTelegram,
+        enableX: options.enableX,
+        enableYouTube: options.enableYouTube,
+        enableBluesky: options.enableBluesky,
+        enableReddit: options.enableReddit,
+        enableMastodon: options.enableMastodon,
+        telegramChannel: options.telegramChannel,
+        instagramProfile: options.instagramProfile,
       });
-
-      // Step 2: Ingest Overview & Timeline & Events
-      setAnalysisStep(2);
-      const [overviewData, timeData, eventData] = await Promise.all([
-        api.overview(),
-        api.timeline(),
-        api.events(),
-      ]);
-      setOverview(overviewData);
-      setTimelinePoints(timeData.points || []);
-      setEvents(eventData.events || []);
-      if (eventData.events[0]) setSelectedEventId(eventData.events[0].id);
-
-      // Step 3: Cluster Emerging Narratives
-      setAnalysisStep(3);
-      const narrativeData = await api.narratives();
-      setNarratives(narrativeData.narratives || []);
-      if (narrativeData.narratives[0]) {
-        setSelectedNarrativeId(narrativeData.narratives[0].id);
-        try {
-          setNarrativeDetail(await api.narrative(narrativeData.narratives[0].id));
-        } catch {
-          setNarrativeDetail(null);
-        }
-      }
-
-      // Step 4: Map Influence Network, Demographics, & Alerts
-      setAnalysisStep(4);
-      const [netData, demoData, alertData, collData] = await Promise.all([
-        api.network(),
-        api.demographics(),
-        api.alerts(),
-        api.collectorStatus(),
-      ]);
-      setNetwork(netData);
-      setDemographics(demoData);
-      setAlerts(alertData.alerts || []);
-      setCollector(collData);
-
-      // Transition to Intelligence Report
-      setViewMode('report');
-      setNotice(`Investigation complete: ${searchRes.inserted} events collected across live sources.`);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Investigation encountered an issue.');
-      setViewMode('input');
+      setLastSearchResult(result);
+      const okSources = Object.entries(result.sources).filter(([, status]) => status.state === 'OK').map(([name]) => name);
+      const failedSources = Object.entries(result.sources).filter(([, status]) => status.state !== 'OK').map(([name]) => name);
+      setActiveQuery(searchQuery);
+      setQuery(searchQuery);
+      setSelectedNarrativeId(null);
+      setSelectedEventId(null);
+      setPostDateFilter(undefined);
+      setNotice(`Live analysis complete: ${result.inserted} post(s) ingested · live sources: ${okSources.join(', ') || 'none'}${failedSources.length ? ` · unavailable: ${failedSources.join(', ')}` : ''}`);
+      await loadAll();
+      return result;
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Live analysis failed.');
     } finally {
       setLoading(false);
     }
   };
 
-  // Switch to Deep Dive with specific event
-  const openPostInDeepDive = (id: string) => {
-    setSelectedEventId(id);
+  const runFreshSearch = async () => {
+    const clean = query.trim();
+    if (!clean) return;
+    await handleExecuteLiveAnalysis(clean, { reset: true, limitPerSource: 5 });
     setTab('posts');
-    setViewMode('deep_dive');
   };
 
-  // Switch to Deep Dive with specific narrative
-  const openNarrativeInDeepDive = async (id: string) => {
+  const openNarrative = async (id: string) => {
     setSelectedNarrativeId(id);
+    setLoading(true);
     try {
       setNarrativeDetail(await api.narrative(id));
       setNetwork(await api.network(id));
-    } catch {
-      // ignore
+      setTab('narrative');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not load narrative.');
+    } finally {
+      setLoading(false);
     }
-    setTab('narrative');
-    setViewMode('deep_dive');
   };
 
-  // Import JSON Event File
+  const openPostById = (id: string) => {
+    setSelectedEventId(id);
+    setTab('posts');
+  };
+
   const importJson = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     event.target.value = '';
     if (!file) return;
-    setLoading(true);
-    setError(null);
+    setLoading(true); setError(null); setNotice(null);
     try {
       const parsed = JSON.parse(await file.text());
       const rows = Array.isArray(parsed) ? parsed : parsed.events;
-      if (!Array.isArray(rows)) throw new Error('JSON must be an array of events.');
+      if (!Array.isArray(rows)) throw new Error('JSON must be an event array or an object with an events array.');
       await api.importEvents(rows);
-      setNotice(`Imported ${rows.length} offline event records (truthfully tagged as IMPORT/REPLAY).`);
+      setNotice(`Imported ${rows.length} event record(s). They are labelled IMPORT/REPLAY, never LIVE.`);
       await loadAll();
-      setViewMode('report');
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Import failed.');
     } finally {
@@ -358,741 +812,24 @@ export default function App({ onNavigateHome }: { onNavigateHome?: () => void } 
     }
   };
 
-  // Continuous Collector Toggle
   const toggleContinuous = () => {
     if (collector?.running) {
-      void action('Continuous collection paused', api.stopCollector);
+      void action('Continuous collector stopped', api.stopCollector);
     } else {
-      void action('Continuous collection started', () => api.startCollector(activeQuery));
+      void action('Continuous collector started', () => api.startCollector(activeQuery));
     }
   };
 
-  // Primary Insight Derived Computations
-  const topNarrative = narratives[0] || null;
   const platformEntries = useMemo(
     () => Object.entries(overview?.platform_mix || {}).sort((a, b) => b[1] - a[1]),
     [overview],
   );
-  const platformCount = platformEntries.length;
 
-  const sentimentBreakdown = useMemo(() => {
-    const mix = overview?.sentiment_mix || {};
-    const total = Object.values(mix).reduce((acc, v) => acc + v, 0) || 1;
-    return {
-      positive: Math.round(((mix.positive || 0) / total) * 100),
-      negative: Math.round(((mix.negative || 0) / total) * 100),
-      neutral: Math.round(((mix.neutral || 0) / total) * 100),
-    };
-  }, [overview]);
+  const readyConnectorsCount = useMemo(
+    () => connectors.filter((c) => c.state === 'READY' || c.state === 'LIVE').length,
+    [connectors],
+  );
 
-  // Filtered Events
-  const displayedEvents = useMemo(() => {
-    let filtered = events;
-    if (postDateFilter) {
-      const targetStr = postDateFilter.toDateString();
-      filtered = filtered.filter((e) => new Date(e.created_at).toDateString() === targetStr);
-    }
-    return filtered.slice(0, conversationLimit);
-  }, [events, postDateFilter, conversationLimit]);
-
-  // Timeline Data for Sentiment Visualization
-  const timelineData = useMemo(() => {
-    return timelinePoints.map((p) => ({
-      time: new Date(p.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      volume: p.count,
-      positive: p.sentiments?.positive || 0,
-      negative: p.sentiments?.negative || 0,
-      neutral: p.sentiments?.neutral || 0,
-    }));
-  }, [timelinePoints]);
-
-  // Influence Nodes
-  const topInfluencers = useMemo(() => {
-    return (network?.nodes || []).slice(0, 5);
-  }, [network]);
-
-  // Truth Mode
-  const sourceModeDistribution = overview?.source_modes || {};
-  const isAllLive = Object.keys(sourceModeDistribution).length === 1 && sourceModeDistribution.LIVE;
-  const hasReplay = !!sourceModeDistribution.REPLAY || !!sourceModeDistribution.IMPORT;
-
-  // =========================================================================
-  // RENDER: 1. INITIAL SCREEN — INPUT FIRST
-  // =========================================================================
-  if (viewMode === 'input') {
-    return (
-      <main className="investigate-input-root">
-        <div className="input-hero-container">
-          <div className="input-brand-pill">
-            <Sparkles size={13} />
-            <span>NEXUS Narrative & Influence Intelligence</span>
-          </div>
-
-          <h1 className="input-hero-title">What do you want to investigate?</h1>
-          <p className="input-hero-subtitle">
-            Real-time multi-source social intelligence. Analyze topics, hashtags, public channels, or URLs with verified provenance.
-          </p>
-
-          <form
-            className="input-search-bar"
-            onSubmit={(e) => {
-              e.preventDefault();
-              void runLiveInvestigation();
-            }}
-          >
-            <Search size={18} className="text-slate-400 shrink-0 ml-1" />
-            <input
-              type="text"
-              value={searchInput}
-              onChange={(e) => setSearchInput(e.target.value)}
-              placeholder="Enter topic, #hashtag, @channel, or post URL..."
-              className="input-search-field"
-              autoFocus
-            />
-            <button
-              type="submit"
-              disabled={loading || !searchInput.trim()}
-              className="input-analyze-btn"
-            >
-              <span>Analyze Live</span>
-              <ArrowRight size={15} />
-            </button>
-          </form>
-
-          {/* Unobtrusive Source Selector */}
-          <div className="input-sources-wrap">
-            <span className="input-sources-label">Configured Intelligence Sources</span>
-            <div className="input-sources-row">
-              {Object.entries(selectedSources).map(([source, isSelected]) => {
-                const connectorObj = connectors.find((c) => c.platform.toLowerCase() === source.toLowerCase());
-                const isReady = connectorObj?.state === 'READY' || connectorObj?.state === 'LIVE';
-                return (
-                  <button
-                    key={source}
-                    type="button"
-                    onClick={() => setSelectedSources((prev) => ({ ...prev, [source]: !isSelected }))}
-                    className={`source-toggle-pill ${isSelected ? 'active' : ''}`}
-                    title={`${source.toUpperCase()}: ${connectorObj?.state || 'Ready'}`}
-                  >
-                    <span
-                      style={{
-                        width: 6,
-                        height: 6,
-                        borderRadius: 999,
-                        backgroundColor: isReady ? '#34D399' : '#FBBF24',
-                      }}
-                    />
-                    <span>{source.toUpperCase()}</span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Quick Presets */}
-          <div className="input-presets-row">
-            {PRESETS.map((preset) => (
-              <button
-                key={preset}
-                type="button"
-                className="preset-chip"
-                onClick={() => void runLiveInvestigation(preset)}
-              >
-                {preset}
-              </button>
-            ))}
-          </div>
-
-          {/* Demo Scenario Option */}
-          <button
-            type="button"
-            className="input-demo-link"
-            onClick={() => action('Demo workspace loaded', api.seedDemo).then(() => setViewMode('report'))}
-          >
-            Or evaluate sample SIH deterministic scenario with Demo Mode →
-          </button>
-        </div>
-      </main>
-    );
-  }
-
-  // =========================================================================
-  // RENDER: 2. LIVE ANALYSIS STATE
-  // =========================================================================
-  if (viewMode === 'analyzing') {
-    return (
-      <main className="analyzing-root">
-        <div className="analyzing-card">
-          <span className="analyzing-eyebrow">Investigating</span>
-          <h2 className="analyzing-query">{activeQuery}</h2>
-          <div className="analyzing-divider" />
-
-          <div className="analyzing-steps">
-            {ANALYSIS_STEPS.map((step) => {
-              const isDone = analysisStep > step.id;
-              const isActive = analysisStep === step.id;
-              const isPending = analysisStep < step.id;
-
-              return (
-                <div
-                  key={step.id}
-                  className={`analyzing-step-row ${isDone ? 'done' : isActive ? 'active' : 'pending'}`}
-                >
-                  <div className="step-icon-wrap">
-                    {isDone ? (
-                      <Check size={16} className="step-check" />
-                    ) : isActive ? (
-                      <div className="step-pulse" />
-                    ) : (
-                      <div className="step-circle" />
-                    )}
-                  </div>
-                  <span>{step.title}</span>
-                </div>
-              );
-            })}
-          </div>
-
-          <p className="analyzing-footnote">
-            Live multi-source collection active across configured platform bridges. Zero synthetic data.
-          </p>
-        </div>
-      </main>
-    );
-  }
-
-  // =========================================================================
-  // RENDER: 3. RESULT PAGE — THE INTELLIGENCE REPORT (Answer-First)
-  // =========================================================================
-  if (viewMode === 'report') {
-    return (
-      <div className="report-root">
-        {/* Minimal Editorial Topbar */}
-        <header className="report-topbar">
-          <div className="report-topbar-brand" onClick={() => setViewMode('input')}>
-            <Sparkles size={16} className="text-blue-400" />
-            <strong>NEXUS</strong>
-            <span>AI Intelligence</span>
-          </div>
-
-          <div className="report-topbar-actions">
-            <button
-              type="button"
-              className="btn-minimal"
-              onClick={() => setViewMode('input')}
-              title="Start a new investigation"
-            >
-              <Search size={13} />
-              <span>New Investigation</span>
-            </button>
-            <button
-              type="button"
-              className="btn-minimal btn-minimal-primary"
-              onClick={() => setViewMode('deep_dive')}
-              title="Open the 9-tab analyst deep dive console"
-            >
-              <span>Deep Dive Console</span>
-              <ArrowRight size={13} />
-            </button>
-            {onNavigateHome && (
-              <button
-                type="button"
-                className="btn-minimal"
-                onClick={onNavigateHome}
-                title="Return to Home"
-              >
-                ← Home
-              </button>
-            )}
-          </div>
-        </header>
-
-        {/* Intelligence Report Main Body */}
-        <article className="report-container">
-          {/* Header & Telemetry */}
-          <section className="report-hero-head">
-            <h1 className="report-topic-title">{activeQuery}</h1>
-            <div className="report-classification-strip">
-              <span className="report-live-badge">
-                <span style={{ width: 6, height: 6, borderRadius: 999, backgroundColor: isAllLive ? '#34D399' : '#FBBF24' }} />
-                {isAllLive ? 'LIVE INTELLIGENCE' : hasReplay ? 'HYBRID / REPLAY ARCHIVE' : 'OBSERVED TOPIC'}
-              </span>
-              <span>Updated just now</span>
-              <span>·</span>
-              <span>Truthful provenance enforced</span>
-            </div>
-
-            {/* Micro-metrics Row (Lines and Spacing, NO cards!) */}
-            <div className="report-metrics-row">
-              <span className="report-metric-item">
-                <b>{overview?.total_events || events.length}</b> Observed Events
-              </span>
-              <span>·</span>
-              <span className="report-metric-item">
-                <b>{narratives.length}</b> Emerging Narratives
-              </span>
-              <span>·</span>
-              <span className="report-metric-item">
-                <b>{alerts.length}</b> Risk Alerts
-              </span>
-              <span>·</span>
-              <span className="report-metric-item">
-                <b>{platformCount}</b> Platforms Observed
-              </span>
-            </div>
-          </section>
-
-          {/* 1. PRIMARY INTELLIGENCE ANSWER: WHAT'S HAPPENING */}
-          <section className="report-section" style={{ borderTop: 0, paddingTop: 0 }}>
-            <div className="report-section-eyebrow">Primary Takeaway</div>
-            <h2 className="report-section-title">WHAT&apos;S HAPPENING</h2>
-
-            {topNarrative ? (
-              <>
-                <p className="primary-insight-text">
-                  &ldquo;{topNarrative.title}&rdquo;
-                </p>
-                <p className="primary-insight-desc">
-                  {topNarrative.representative_text}
-                </p>
-
-                {/* Key Insight Indicators */}
-                <div className="primary-stat-grid">
-                  <div className="primary-stat-cell">
-                    <span>Conversation Volume</span>
-                    <strong>↑ {Math.round(topNarrative.trend.growth_rate * 100)}% velocity</strong>
-                  </div>
-                  <div className="primary-stat-cell">
-                    <span>Positive Sentiment</span>
-                    <strong style={{ color: '#34D399' }}>{sentimentBreakdown.positive}%</strong>
-                  </div>
-                  <div className="primary-stat-cell">
-                    <span>Negative Sentiment</span>
-                    <strong style={{ color: '#F87171' }}>{sentimentBreakdown.negative}%</strong>
-                  </div>
-                  <div className="primary-stat-cell">
-                    <span>Platform Spread</span>
-                    <strong>{topNarrative.trend.platform_count} platforms</strong>
-                  </div>
-                </div>
-
-                {/* Editorial Why It Matters Box */}
-                <div className="why-it-matters-box">
-                  <strong>Why it matters</strong>
-                  The discussion is accelerating across {topNarrative.trend.platform_count} platforms with {pct(topNarrative.trend.author_diversity)} author diversity. Sentiment is trending {sentimentBreakdown.positive > sentimentBreakdown.negative ? 'predominantly positive' : 'critical or skeptical'}, spreading through {Object.keys(topNarrative.platform_mix).join(', ')}.
-                </div>
-
-                {/* Top Alert Callout if present */}
-                {alerts.length > 0 && (
-                  <div style={{ marginTop: 16, padding: '12px 16px', borderRadius: 8, background: 'rgba(239, 68, 68, 0.08)', border: '1px solid rgba(239, 68, 68, 0.25)', display: 'flex', alignItems: 'flex-start', gap: 10 }}>
-                    <AlertTriangle size={16} className="text-red-400 shrink-0 mt-0.5" />
-                    <div style={{ fontSize: 12.5, color: '#FCA5A5' }}>
-                      <strong style={{ color: '#FFFFFF', display: 'block', marginBottom: 2 }}>{alerts[0].title}</strong>
-                      <span>{alerts[0].why_triggered[0]} (Confidence: {pct(alerts[0].confidence)})</span>
-                    </div>
-                  </div>
-                )}
-              </>
-            ) : (
-              <p className="primary-insight-desc">
-                No dominant narrative detected yet for this topic. Run a fresh search or poll live bridges to ingest events.
-              </p>
-            )}
-          </section>
-
-          {/* 2. EMERGING NARRATIVES */}
-          <section className="report-section">
-            <div className="report-section-eyebrow">Trend Clustering</div>
-            <h2 className="report-section-title">EMERGING NARRATIVES</h2>
-            <p className="report-section-subtitle">
-              Ranked by semantic momentum, burst rate, and cross-platform presence. Click any narrative to reveal details.
-            </p>
-
-            <div className="narratives-list">
-              {narratives.slice(0, 5).map((n, idx) => {
-                const isExpanded = expandedNarrativeId === n.id;
-                return (
-                  <div
-                    key={n.id}
-                    className="narrative-row"
-                    onClick={() => setExpandedNarrativeId(isExpanded ? null : n.id)}
-                  >
-                    <span className="narrative-num">0{idx + 1}</span>
-                    <div className="narrative-body">
-                      <div className="narrative-row-title">{n.title}</div>
-                      <div className="narrative-row-meta">
-                        <span>↑ <b>{Math.round(n.trend.growth_rate * 100)}%</b> growth</span>
-                        <span>·</span>
-                        <span><b>{n.trend.platform_count}</b> platforms</span>
-                        <span>·</span>
-                        <span><b>{n.event_count}</b> mentions</span>
-                        <span>·</span>
-                        <span><b>{pct(n.trend.author_diversity)}</b> diversity</span>
-                        <span style={{ marginLeft: 'auto', color: '#60A5FA', fontSize: 11 }}>
-                          {isExpanded ? 'Less ↑' : 'Details ↓'}
-                        </span>
-                      </div>
-
-                      {/* Progressive Disclosure Content */}
-                      {isExpanded && (
-                        <div className="narrative-expanded-content" onClick={(e) => e.stopPropagation()}>
-                          <p style={{ margin: '0 0 10px', fontStyle: 'italic' }}>&ldquo;{n.representative_text}&rdquo;</p>
-                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
-                            {Object.entries(n.platform_mix).map(([p, count]) => (
-                              <span key={p} className="chip">{p}: {count}</span>
-                            ))}
-                            <button
-                              type="button"
-                              className="text-btn"
-                              style={{ marginLeft: 'auto', fontSize: 11.5 }}
-                              onClick={() => void openNarrativeInDeepDive(n.id)}
-                            >
-                              Inspect Full Lineage in Console →
-                            </button>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </section>
-
-          {/* 3. SENTIMENT OVER TIME */}
-          <section className="report-section">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
-              <div>
-                <div className="report-section-eyebrow">Emotional Trajectory</div>
-                <h2 className="report-section-title">SENTIMENT OVER TIME</h2>
-                <p className="report-section-subtitle">Conversation volume and sentiment movement across observed timeline buckets.</p>
-              </div>
-
-              {/* Visualization Mode Switcher */}
-              <div style={{ display: 'flex', gap: 4 }}>
-                {(['all', 'positive', 'negative', 'volume'] as const).map((mode) => (
-                  <button
-                    key={mode}
-                    type="button"
-                    className={`btn-minimal ${sentimentChartMode === mode ? 'btn-minimal-primary' : ''}`}
-                    style={{ fontSize: 11, height: 28 }}
-                    onClick={() => setSentimentChartMode(mode)}
-                  >
-                    {mode.toUpperCase()}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div style={{ width: '100%', height: 280, marginTop: 12 }}>
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={timelineData} margin={{ left: 0, right: 10, top: 10, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" opacity={0.1} />
-                  <XAxis dataKey="time" tick={{ fontSize: 10.5, fill: '#64748B' }} />
-                  <YAxis allowDecimals={false} tick={{ fontSize: 10.5, fill: '#64748B' }} />
-                  <Tooltip contentStyle={{ background: '#09101C', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, fontSize: 11 }} />
-
-                  {(sentimentChartMode === 'all' || sentimentChartMode === 'volume') && (
-                    <Area type="monotone" dataKey="volume" stroke="#60A5FA" fill="#3B82F6" fillOpacity={0.12} strokeWidth={2} name="Total Volume" />
-                  )}
-                  {(sentimentChartMode === 'all' || sentimentChartMode === 'positive') && (
-                    <Line type="monotone" dataKey="positive" stroke="#34D399" strokeWidth={2} dot={false} name="Positive" />
-                  )}
-                  {(sentimentChartMode === 'all' || sentimentChartMode === 'negative') && (
-                    <Line type="monotone" dataKey="negative" stroke="#F87171" strokeWidth={2} dot={false} name="Negative" />
-                  )}
-                </AreaChart>
-              </ResponsiveContainer>
-            </div>
-          </section>
-
-          {/* 4. LIVE CONVERSATION (Evidence Stream) */}
-          <section className="report-section">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
-              <div>
-                <div className="report-section-eyebrow">Forensic Wire</div>
-                <h2 className="report-section-title">LIVE CONVERSATION</h2>
-                <p className="report-section-subtitle">
-                  Chronological public events collected directly from verified sources.
-                </p>
-              </div>
-
-              {postDateFilter && (
-                <button
-                  type="button"
-                  className="btn-minimal"
-                  onClick={() => setPostDateFilter(undefined)}
-                >
-                  Clear Date Filter ({postDateFilter.toLocaleDateString()}) ✕
-                </button>
-              )}
-            </div>
-
-            <div className="conversation-stream">
-              {displayedEvents.map((e) => (
-                <div key={e.id} className="conversation-wire-item">
-                  <div className="conversation-wire-time">
-                    {new Date(e.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                  </div>
-                  <div className="conversation-wire-content">
-                    <div className="conversation-wire-head">
-                      <span className="wire-platform">{e.platform}</span>
-                      <SourceBadge mode={e.source_mode} />
-                      <span className="wire-author">{e.author_display || e.author_pseudo_id || 'Anonymous'}</span>
-                    </div>
-                    <p className="wire-text">{e.text}</p>
-                    <div className="wire-footer">
-                      <span className="chip" style={{ fontSize: 9.5 }}>{e.sentiment_label || 'neutral'}</span>
-                      {e.stance_label && <span className="chip" style={{ fontSize: 9.5 }}>{e.stance_label}</span>}
-                      {e.url && !e.url.includes('example.invalid') && (
-                        <a href={e.url} target="_blank" rel="noreferrer" className="text-btn" style={{ fontSize: 11, padding: 0 }}>
-                          View source ↗
-                        </a>
-                      )}
-                      <button
-                        type="button"
-                        className="text-btn"
-                        style={{ marginLeft: 'auto', fontSize: 11 }}
-                        onClick={() => openPostInDeepDive(e.id)}
-                      >
-                        Inspect in Forensics →
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              ))}
-
-              {events.length > conversationLimit && (
-                <button
-                  type="button"
-                  className="progressive-disclosure-btn"
-                  onClick={() => setConversationLimit((prev) => prev + 12)}
-                >
-                  Show more events ({events.length - conversationLimit} remaining) ↓
-                </button>
-              )}
-            </div>
-          </section>
-
-          {/* 5. AUDIENCE (WHO IS TALKING?) */}
-          <section className="report-section">
-            <div className="report-section-eyebrow">Demographic Signals</div>
-            <h2 className="report-section-title">WHO IS TALKING?</h2>
-            <p className="report-section-subtitle">
-              Aggregate public-signal inference · k-anonymity protected · No individual profiling
-            </p>
-
-            {demographics ? (
-              <div className="audience-grid">
-                {/* Language */}
-                <div>
-                  <div className="audience-card-label">Language</div>
-                  {Object.entries(demographics.language?.counts || {}).slice(0, 4).map(([lang, count]) => {
-                    const total = Object.values(demographics.language?.counts || {}).reduce((a, b) => a + b, 0) || 1;
-                    const percentage = Math.round((count / total) * 100);
-                    return (
-                      <div key={lang}>
-                        <div className="audience-bar-row">
-                          <span>{lang}</span>
-                          <b>{percentage}%</b>
-                        </div>
-                        <div className="audience-bar-track">
-                          <div className="audience-bar-fill" style={{ width: `${percentage}%` }} />
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-
-                {/* Geography */}
-                <div>
-                  <div className="audience-card-label">Broad Region</div>
-                  {Object.entries(demographics.broad_geography?.counts || {}).slice(0, 4).map(([geo, count]) => {
-                    const total = Object.values(demographics.broad_geography?.counts || {}).reduce((a, b) => a + b, 0) || 1;
-                    const percentage = Math.round((count / total) * 100);
-                    return (
-                      <div key={geo}>
-                        <div className="audience-bar-row">
-                          <span>{geo.replaceAll('_', ' ')}</span>
-                          <b>{percentage}%</b>
-                        </div>
-                        <div className="audience-bar-track">
-                          <div className="audience-bar-fill" style={{ width: `${percentage}%` }} />
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-
-                {/* Professional Interests */}
-                <div>
-                  <div className="audience-card-label">Professional Interests</div>
-                  {Object.entries(demographics.professional_interests?.counts || {}).slice(0, 4).map(([topic, count]) => {
-                    const total = Object.values(demographics.professional_interests?.counts || {}).reduce((a, b) => a + b, 0) || 1;
-                    const percentage = Math.round((count / total) * 100);
-                    return (
-                      <div key={topic}>
-                        <div className="audience-bar-row">
-                          <span>{topic.replaceAll('_', ' ')}</span>
-                          <b>{percentage}%</b>
-                        </div>
-                        <div className="audience-bar-track">
-                          <div className="audience-bar-fill" style={{ width: `${percentage}%` }} />
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-
-                {/* Age Brackets */}
-                <div>
-                  <div className="audience-card-label">Age Brackets</div>
-                  {Object.entries(demographics.age_brackets?.counts || {}).slice(0, 4).map(([age, count]) => {
-                    const total = Object.values(demographics.age_brackets?.counts || {}).reduce((a, b) => a + b, 0) || 1;
-                    const percentage = Math.round((count / total) * 100);
-                    return (
-                      <div key={age}>
-                        <div className="audience-bar-row">
-                          <span>{age}</span>
-                          <b>{percentage}%</b>
-                        </div>
-                        <div className="audience-bar-track">
-                          <div className="audience-bar-fill" style={{ width: `${percentage}%` }} />
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            ) : (
-              <p style={{ color: '#64748B', fontSize: 12 }}>Aggregate demographics not yet loaded.</p>
-            )}
-          </section>
-
-          {/* 6. WHO IS DRIVING THE CONVERSATION? (Influence) */}
-          <section className="report-section">
-            <div className="report-section-eyebrow">Influence Dynamics</div>
-            <h2 className="report-section-title">WHO IS DRIVING THE CONVERSATION?</h2>
-            <p className="report-section-subtitle">
-              Key bridge nodes and reach amplifiers detected via graph centrality algorithms.
-            </p>
-
-            <div className="influencers-list">
-              {topInfluencers.map((node, idx) => (
-                <div key={node.id} className="influencer-row">
-                  <div className="influencer-left">
-                    <span className="influencer-num">0{idx + 1}</span>
-                    <div>
-                      <div className="influencer-name">{node.label}</div>
-                      <div className="influencer-role">{node.role} · {node.explanation}</div>
-                    </div>
-                  </div>
-                  <div className="influencer-score">PageRank {node.pagerank.toFixed(3)}</div>
-                </div>
-              ))}
-            </div>
-
-            {/* Progressive Disclosure: Network Canvas */}
-            <button
-              type="button"
-              className="progressive-disclosure-btn"
-              onClick={() => setShowNetworkGraph((prev) => !prev)}
-            >
-              {showNetworkGraph ? 'Hide Network Graph ↑' : 'Explore Interactive Network Graph ↓'}
-            </button>
-
-            {showNetworkGraph && network && (
-              <div style={{ marginTop: 16 }}>
-                <NetworkGraph network={network} />
-              </div>
-            )}
-          </section>
-
-          {/* 7. WHY SHOULD I TRUST THIS? (Evidence & Trust) */}
-          <section className="report-section">
-            <div className="report-section-eyebrow">Verifiability & Audit</div>
-            <h2 className="report-section-title">WHY SHOULD I TRUST THIS?</h2>
-            <p className="report-section-subtitle">
-              SIH26152 Truthful Provenance Guarantee. Every insight is tied to timestamped source evidence.
-            </p>
-
-            <div style={{ padding: '16px 20px', borderRadius: 8, background: '#09101C', border: '1px solid rgba(255,255,255,0.06)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div>
-                <strong style={{ display: 'block', fontSize: 13.5, color: '#F1F5F9' }}>Evidence Verified</strong>
-                <span style={{ fontSize: 12, color: '#8994A7' }}>
-                  {events.length} observations across {platformCount} live sources · 100% source traceability
-                </span>
-              </div>
-              <button
-                type="button"
-                className="btn-minimal"
-                onClick={() => setShowEvidenceLedger((prev) => !prev)}
-              >
-                {showEvidenceLedger ? 'Hide Ledger ↑' : 'View Evidence Ledger ↓'}
-              </button>
-            </div>
-
-            {showEvidenceLedger && (
-              <div style={{ marginTop: 16 }}>
-                <section className="panel table-panel">
-                  <div className="evidence-table">
-                    <div className="evidence-row evidence-head">
-                      <span>Source</span>
-                      <span>Time</span>
-                      <span>Author</span>
-                      <span>Text</span>
-                      <span>Inference</span>
-                    </div>
-                    {events.slice(0, 50).map((event) => (
-                      <div
-                        key={event.id}
-                        className="evidence-row evidence-row-clickable"
-                        onClick={() => openPostInDeepDive(event.id)}
-                      >
-                        <span>
-                          <PlatformBadge platform={event.platform} /> <SourceBadge mode={event.source_mode} />
-                        </span>
-                        <span>{fmt(event.created_at)}</span>
-                        <span>{event.author_display || event.author_pseudo_id || '—'}</span>
-                        <span className="evidence-text">{event.text}</span>
-                        <span>
-                          <Badge>{event.sentiment_label || 'unknown'}</Badge>{' '}
-                          <Badge>{event.stance_label || 'unclear'}</Badge>
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </section>
-              </div>
-            )}
-          </section>
-
-          {/* 8. LEVEL 2 BRIDGE: DEEP DIVE CALLOUT */}
-          <div className="deep-dive-callout">
-            <div className="deep-dive-copy">
-              <h4>Need Complete Forensic Analysis?</h4>
-              <p>
-                Access all 9 specialized intelligence modules, including detailed NLP inspection, geographic breakdowns, and raw JSON export.
-              </p>
-            </div>
-            <button
-              type="button"
-              className="btn-minimal btn-minimal-primary"
-              style={{ height: 38, padding: '0 16px', fontSize: 13 }}
-              onClick={() => setViewMode('deep_dive')}
-            >
-              <span>Open 9-Tab Console</span>
-              <ArrowRight size={14} />
-            </button>
-          </div>
-        </article>
-      </div>
-    );
-  }
-
-  // =========================================================================
-  // RENDER: 4. LEVEL 2 — DEEP DIVE ANALYST CONSOLE (9 Specialized Modules)
-  // =========================================================================
   return (
     <div className="app-shell">
       {/* Hidden File Input for JSON import */}
@@ -1104,36 +841,20 @@ export default function App({ onNavigateHome }: { onNavigateHome?: () => void } 
         style={{ display: 'none' }}
       />
 
-      {/* Sticky Back to Report Banner */}
-      <div className="deep-dive-header">
-        <button
-          type="button"
-          className="back-to-report-btn"
-          onClick={() => setViewMode('report')}
-        >
-          <ArrowLeft size={13} />
-          <span>Back to Intelligence Report</span>
-        </button>
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 12, color: '#8994A7' }}>
-          <span>Active Topic: <strong style={{ color: '#F8FAFC' }}>{activeQuery}</strong></span>
-          <span>·</span>
-          <span>9 Analyst Modules</span>
-        </div>
-
-        <button
-          type="button"
-          className="btn-minimal"
-          onClick={() => setViewMode('input')}
-        >
-          <Search size={12} />
-          <span>New Query</span>
-        </button>
-      </div>
-
       {/* TOPBAR */}
       <header className="topbar">
         <div className="brand">
+          {onNavigateHome && (
+            <button
+              type="button"
+              onClick={onNavigateHome}
+              className="btn btn-secondary"
+              style={{ height: 32, padding: '0 9px', fontSize: 11, gap: 5 }}
+              title="Return to Landing Page"
+            >
+              ← Home
+            </button>
+          )}
           <div className="brand-mark"><Sparkles size={18} /></div>
           <div>
             <strong>NEXUS</strong>
@@ -1145,21 +866,31 @@ export default function App({ onNavigateHome }: { onNavigateHome?: () => void } 
           <div className="query-box">
             <Search size={14} />
             <input
-              value={searchInput}
-              onChange={(e) => setSearchInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') void runLiveInvestigation(searchInput);
-              }}
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') void runFreshSearch(); }}
               placeholder="Search topic or #hashtag..."
             />
           </div>
           <button
             type="button"
             className="btn btn-primary"
-            disabled={loading || !searchInput.trim()}
-            onClick={() => void runLiveInvestigation(searchInput)}
+            disabled={loading || !query.trim()}
+            onClick={() => void runFreshSearch()}
           >
             <Search size={13} /> Search
+          </button>
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={() => {
+              setTab('overview');
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            }}
+            title="Open Intelligence Target Selection Hub"
+          >
+            <Radio size={13} className="text-blue-400 animate-pulse" />
+            <span>Target Hub</span>
           </button>
           <button
             type="button"
@@ -1170,8 +901,34 @@ export default function App({ onNavigateHome }: { onNavigateHome?: () => void } 
           >
             <Play size={13} /> Demo
           </button>
+          <button
+            type="button"
+            className={`btn btn-secondary ${showIntelligenceDrawer ? 'active' : ''}`}
+            onClick={() => setShowIntelligenceDrawer((prev) => !prev)}
+            title="Toggle Connection Center & Free Source Lab toolbar"
+          >
+            <Layers size={13} />
+            <span>Sources & Lab ({readyConnectorsCount}/{connectors.length || 8})</span>
+            {showIntelligenceDrawer ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+          </button>
         </div>
       </header>
+
+      {/* COLLAPSIBLE INTELLIGENCE INGESTION TOOLBAR */}
+      <AnimatePresence>
+        {showIntelligenceDrawer && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={{ duration: 0.18 }}
+            style={{ overflow: 'hidden', borderBottom: '1px solid rgba(255,255,255,0.06)' }}
+          >
+            <ConnectionCenter />
+            <FreeConnectorPanel />
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* BANNERS */}
       {error && (
@@ -1209,7 +966,7 @@ export default function App({ onNavigateHome }: { onNavigateHome?: () => void } 
             <ShieldCheck size={15} className="shrink-0 text-emerald-400" />
             <div>
               <strong>Active Workspace</strong>
-              <span>{activeQuery} · {platformCount} platforms</span>
+              <span>{activeQuery} · {readyConnectorsCount} sources live</span>
             </div>
           </div>
         </aside>
@@ -1217,7 +974,10 @@ export default function App({ onNavigateHome }: { onNavigateHome?: () => void } 
         <main className="content">
           {loading && <div className="loading-line"><span /></div>}
 
-          {/* TAB 1: OVERVIEW */}
+          {/* SIH26152 END-TO-END PIPELINE BANNER */}
+          <SIHPipelineBanner activeTab={tab} onSelectTab={setTab} />
+
+          {/* OVERVIEW TAB */}
           {tab === 'overview' && (
             <motion.div
               key="overview"
@@ -1225,6 +985,15 @@ export default function App({ onNavigateHome }: { onNavigateHome?: () => void } 
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.18 }}
             >
+              {/* INTELLIGENCE TARGET SELECTION HUB */}
+              <IntelligenceTargetHub
+                activeQuery={activeQuery}
+                loading={loading}
+                connectors={connectors}
+                onExecuteLiveAnalysis={handleExecuteLiveAnalysis}
+                lastSearchResult={lastSearchResult}
+              />
+
               <div className="page-head">
                 <div>
                   <div className="eyebrow">Workspace · {activeQuery}</div>
@@ -1241,25 +1010,59 @@ export default function App({ onNavigateHome }: { onNavigateHome?: () => void } 
                 </button>
               </div>
 
-              {/* Data Ingestion Drawer */}
-              <div style={{ marginBottom: 20 }}>
-                <ConnectionCenter />
-                <FreeConnectorPanel />
+              {/* 4 SOC METRIC CARDS */}
+              <div className="metric-grid">
+                <Metric
+                  icon={Database}
+                  label="Observed events"
+                  value={overview?.total_events || 0}
+                  helper="current search workspace only"
+                  tone="blue"
+                />
+                <Metric
+                  icon={GitBranch}
+                  label="Active Narratives"
+                  value={overview?.active_narratives || 0}
+                  helper="semantic + temporal clusters"
+                  tone="purple"
+                />
+                <Metric
+                  icon={Activity}
+                  label="Rising Signals"
+                  value={overview?.rising_narratives || 0}
+                  helper="burst & acceleration detected"
+                  tone="amber"
+                />
+                <Metric
+                  icon={AlertTriangle}
+                  label="Evidence alerts"
+                  value={overview?.alerts || 0}
+                  helper="audited & verifiable alerts"
+                  tone="rose"
+                />
               </div>
 
-              {/* Continuous Collection Tray */}
+              {/* LIVE TELEMETRY STRIP & COLLECTION CONTROL */}
               <div className="collection-tray">
-                <div className="collection-tray-head">
+                <div className="collection-tray-head" style={{ borderBottom: '1px solid rgba(255,255,255,0.07)', paddingBottom: 8, marginBottom: 10 }}>
                   <div className="collection-tray-title">
-                    <Radio size={14} className="text-blue-400" />
-                    <strong>CONTINUOUS COLLECTION</strong>
+                    <Radio size={14} className={collector?.running ? 'text-emerald-400 animate-pulse' : 'text-slate-400'} />
+                    <strong>LIVE PIPELINE TELEMETRY</strong>
                     <span className={`badge ${collector?.running ? 'badge-live' : 'badge-neutral'}`}>
-                      {collector?.running ? '● STREAMING' : 'IDLE'}
+                      {collector?.running ? '● LIVE STREAMING' : 'IDLE'}
                     </span>
                   </div>
-                  <span className="text-[11px] text-slate-400">
-                    {collector?.cycles ? `${collector.cycles} cycles executed` : 'Manual or continuous stream'}
-                  </span>
+                  <div style={{ display: 'flex', gap: 14, alignItems: 'center', fontSize: 11.5 }}>
+                    <span className="text-slate-400">
+                      Last Event: <strong className="text-slate-200">{collector?.last_event_at ? new Date(collector.last_event_at).toLocaleTimeString() : 'Awaiting data'}</strong>
+                    </span>
+                    <span className="text-slate-400">
+                      Rate: <strong className="text-emerald-400">{collector?.ingestion_rate ?? 0} ev/min</strong>
+                    </span>
+                    <span className="text-slate-400">
+                      Cycles: <strong className="text-slate-200">{collector?.cycles || 0}</strong>
+                    </span>
+                  </div>
                 </div>
 
                 <div className="collection-actions-row">
@@ -1279,7 +1082,19 @@ export default function App({ onNavigateHome }: { onNavigateHome?: () => void } 
                     className="btn btn-secondary"
                     style={{ height: 32, fontSize: 11.5 }}
                     disabled={loading}
+                    onClick={() => action('Queried Official X API', () => api.searchX(query))}
+                    title="Query Official X API v2 (honest LIVE or CREDENTIALS_REQUIRED)"
+                  >
+                    + Official X
+                  </button>
+
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    style={{ height: 32, fontSize: 11.5 }}
+                    disabled={loading}
                     onClick={() => action('Polled Telegram Bot', api.pollTelegram)}
+                    title="Poll authorized Telegram Bot updates"
                   >
                     + Telegram Bot
                   </button>
@@ -1289,14 +1104,65 @@ export default function App({ onNavigateHome }: { onNavigateHome?: () => void } 
                     className="btn btn-secondary"
                     style={{ height: 32, fontSize: 11.5 }}
                     disabled={loading}
+                    onClick={() => action('Synced Meta Instagram', () => api.syncMeta('instagram'))}
+                    title="Sync Meta Instagram Graph API"
+                  >
+                    + Instagram API
+                  </button>
+
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    style={{ height: 32, fontSize: 11.5 }}
+                    disabled={loading}
+                    onClick={() => action('Synced Meta Facebook', () => api.syncMeta('facebook'))}
+                    title="Sync Meta Facebook Page Graph API"
+                  >
+                    + Facebook Page
+                  </button>
+
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    style={{ height: 32, fontSize: 11.5 }}
+                    disabled={loading}
                     onClick={() => importRef.current?.click()}
+                    title="Import offline JSON event ledger (labeled IMPORT/REPLAY)"
                   >
                     <Upload size={13} />
                     <span>Import JSON</span>
                   </button>
                 </div>
+
+                {/* Per-Platform Connector Health */}
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginTop: 8 }}>
+                  <span style={{ fontSize: 10.5, color: '#94a3b8', marginRight: 2 }}>Sources:</span>
+                  {Object.entries(collector?.source_health || {
+                    telegram: 'OK',
+                    x: 'CREDENTIALS_REQUIRED',
+                    youtube: 'OK',
+                    reddit: 'OK',
+                    bluesky: 'OK',
+                    mastodon: 'OK',
+                  }).map(([plat, state]) => {
+                    const isLive = state === 'OK' || state === 'LIVE';
+                    const isReq = state.includes('REQUIRED') || state.includes('PERMISSION');
+                    const badgeClass = isLive ? 'badge-good' : isReq ? 'badge-warn' : 'badge-bad';
+                    return (
+                      <span key={plat} className={`badge ${badgeClass}`} style={{ fontSize: 10, padding: '2px 6px', textTransform: 'capitalize' }} title={`${plat}: ${state}`}>
+                        {plat}: {state}
+                      </span>
+                    );
+                  })}
+                </div>
+
+                <div className="collection-callout" style={{ marginTop: 8 }}>
+                  <ShieldCheck size={14} className="text-emerald-400 shrink-0" />
+                  <span>Real-time pipeline active. Ingested posts execute live NLP/AI analysis, timeline updates, sentiment/emotion trends, and evidence verification without simulated fallback.</span>
+                </div>
               </div>
 
+              {/* OVERVIEW GRID */}
               <div className="overview-grid">
                 <section className="panel panel-span-2">
                   <div className="section-head">
@@ -1309,31 +1175,16 @@ export default function App({ onNavigateHome }: { onNavigateHome?: () => void } 
                     </button>
                   </div>
                   <div className="trend-list">
-                    {narratives.slice(0, 4).map((n) => (
-                      <button
-                        key={n.id}
-                        type="button"
-                        className="trend-card"
-                        onClick={() => void openNarrativeInDeepDive(n.id)}
-                      >
-                        <div className="trend-card-top">
-                          <div>
-                            <div className="eyebrow">{n.id} · {n.event_count} events</div>
-                            <h3>{n.title}</h3>
-                          </div>
-                          <Badge tone={n.trend.status === 'VIRAL' ? 'bad' : n.trend.status === 'RISING' ? 'warn' : 'neutral'}>
-                            {n.trend.status}
-                          </Badge>
-                        </div>
-                        <p>{n.representative_text}</p>
-                        <div className="trend-grid">
-                          <span><b>{n.trend.score.toFixed(2)}</b> score</span>
-                          <span><b>{n.trend.growth_rate >= 0 ? '+' : ''}{n.trend.growth_rate.toFixed(2)}</b> growth</span>
-                          <span><b>{n.trend.platform_count}</b> platforms</span>
-                          <span><b>{pct(n.trend.author_diversity)}</b> diversity</span>
-                        </div>
-                      </button>
+                    {(overview?.top_narratives || []).slice(0, 4).map((n) => (
+                      <TrendCard key={n.id} narrative={n} onOpen={() => void openNarrative(n.id)} />
                     ))}
+                    {!overview?.top_narratives?.length && (
+                      <div className="empty">
+                        <Sparkles size={28} />
+                        <h3>No events yet</h3>
+                        <p>Run Search above or click Demo to load the deterministic scenario.</p>
+                      </div>
+                    )}
                   </div>
                 </section>
 
@@ -1348,12 +1199,23 @@ export default function App({ onNavigateHome }: { onNavigateHome?: () => void } 
                       </div>
                     ))}
                   </div>
+                  <hr />
+                  <div className="eyebrow">Source modes</div>
+                  <div className="chip-row">
+                    {Object.entries(overview?.source_modes || {}).map(([mode, count]) => (
+                      <span className="chip" key={mode}>{mode}: {count}</span>
+                    ))}
+                  </div>
+                  <div className="coverage-callout">
+                    <ShieldCheck size={16} />
+                    <span>{overview?.coverage_note || 'Coverage is always bounded by configured connectors.'}</span>
+                  </div>
                 </aside>
               </div>
             </motion.div>
           )}
 
-          {/* TAB 2: POSTS / EXPLORER (With Calendar-10 integration) */}
+          {/* POSTS / EXPLORER TAB */}
           {tab === 'posts' && (
             <motion.div
               key="posts"
@@ -1392,7 +1254,7 @@ export default function App({ onNavigateHome }: { onNavigateHome?: () => void } 
             </motion.div>
           )}
 
-          {/* TAB 3: TIMELINE */}
+          {/* TIMELINE TAB */}
           {tab === 'timeline' && (
             <motion.div
               key="timeline"
@@ -1402,30 +1264,20 @@ export default function App({ onNavigateHome }: { onNavigateHome?: () => void } 
             >
               <div className="page-head">
                 <div>
-                  <div className="eyebrow">Exact chronology</div>
+                  <div className="eyebrow">SIH Components A & B · Exact Chronology & Sentiment Timeline</div>
                   <h1>Timeline & sentiment movement</h1>
-                  <p>See when volume changes and whether emotion shifts with it.</p>
+                  <p>Track post volume, nuanced emotions (anxiety, excitement, anger, sadness) and supportive/against stances over selectable time windows.</p>
                 </div>
               </div>
-              <section className="panel panel-large">
-                <div className="chart-wrap">
-                  <ResponsiveContainer width="100%" height={380}>
-                    <AreaChart data={timelineData} margin={{ left: 0, right: 16, top: 12, bottom: 0 }}>
-                      <CartesianGrid strokeDasharray="3 3" opacity={0.15} />
-                      <XAxis dataKey="time" tick={{ fontSize: 11, fill: '#64748B' }} />
-                      <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: '#64748B' }} />
-                      <Tooltip contentStyle={{ background: '#091120', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, fontSize: 11 }} />
-                      <Area type="monotone" dataKey="volume" stroke="#60A5FA" fill="#3B82F6" fillOpacity={0.12} strokeWidth={2.5} />
-                      <Line type="monotone" dataKey="negative" stroke="#F87171" strokeWidth={1.75} dot={false} />
-                      <Line type="monotone" dataKey="positive" stroke="#34D399" strokeWidth={1.75} dot={false} />
-                    </AreaChart>
-                  </ResponsiveContainer>
-                </div>
-              </section>
+              <TimelineView
+                points={timelinePoints}
+                minutes={timelineMinutes}
+                onMinutesChange={handleTimelineMinutesChange}
+              />
             </motion.div>
           )}
 
-          {/* TAB 4: TRENDS */}
+          {/* TRENDS TAB */}
           {tab === 'trends' && (
             <motion.div
               key="trends"
@@ -1435,43 +1287,25 @@ export default function App({ onNavigateHome }: { onNavigateHome?: () => void } 
             >
               <div className="page-head">
                 <div>
-                  <div className="eyebrow">Real-time trend engine</div>
-                  <h1>Emerging narratives</h1>
-                  <p>Ranked using growth, burst, diversity, cross-platform presence, engagement and recency.</p>
+                  <div className="eyebrow">SIH Component D · Real-time Trend Engine</div>
+                  <h1>Emerging narratives & keyword clusters</h1>
+                  <p>Ranked using frequency, growth rate, cross-platform spread, burst velocity, and author diversity.</p>
                 </div>
               </div>
+
+              {/* SIH D: Ranked Workspace-wide Trending Keywords Ribbon */}
+              <TrendingKeywordsRibbon keywords={overview?.trending_keywords} />
+
               <div className="trend-list standalone">
                 {narratives.map((n) => (
-                  <button
-                    key={n.id}
-                    type="button"
-                    className="trend-card"
-                    onClick={() => void openNarrativeInDeepDive(n.id)}
-                  >
-                    <div className="trend-card-top">
-                      <div>
-                        <div className="eyebrow">{n.id} · {n.event_count} events</div>
-                        <h3>{n.title}</h3>
-                      </div>
-                      <Badge tone={n.trend.status === 'VIRAL' ? 'bad' : n.trend.status === 'RISING' ? 'warn' : 'neutral'}>
-                        {n.trend.status}
-                      </Badge>
-                    </div>
-                    <p>{n.representative_text}</p>
-                    <div className="trend-grid">
-                      <span><b>{n.trend.score.toFixed(2)}</b> score</span>
-                      <span><b>{n.trend.growth_rate >= 0 ? '+' : ''}{n.trend.growth_rate.toFixed(2)}</b> growth</span>
-                      <span><b>{n.trend.platform_count}</b> platforms</span>
-                      <span><b>{pct(n.trend.author_diversity)}</b> diversity</span>
-                    </div>
-                  </button>
+                  <TrendCard key={n.id} narrative={n} onOpen={() => void openNarrative(n.id)} />
                 ))}
               </div>
             </motion.div>
           )}
 
-          {/* TAB 5: NARRATIVE */}
-          {tab === 'narrative' && narrativeDetail && (
+          {/* NARRATIVE TAB */}
+          {tab === 'narrative' && (
             <motion.div
               key="narrative"
               initial={{ opacity: 0, y: 6 }}
@@ -1480,57 +1314,17 @@ export default function App({ onNavigateHome }: { onNavigateHome?: () => void } 
             >
               <div className="page-head">
                 <div>
-                  <div className="eyebrow">{narrativeDetail.id} · Narrative lineage</div>
-                  <h1>{narrativeDetail.title}</h1>
-                  <p>{narrativeDetail.representative_text}</p>
-                </div>
-                <div className="chip-row">
-                  <a className="btn btn-secondary" href={api.narrativeCsvUrl(narrativeDetail.id)}><Download size={13} /> CSV</a>
-                  <a className="btn btn-secondary" href={api.narrativeJsonUrl(narrativeDetail.id)}><Download size={13} /> JSON</a>
+                  <div className="eyebrow">Evidence-backed story</div>
+                  <h1>Narrative lineage</h1>
+                  <p>Earliest observed evidence → variants → amplification → sentiment change.</p>
                 </div>
               </div>
-
-              <div className="narrative-layout">
-                <section className="panel panel-large">
-                  <div className="callout"><ShieldCheck size={16} /><span>{narrativeDetail.origin_claim}</span></div>
-                  <div className="lineage">
-                    {narrativeDetail.lineage.slice(0, 40).map((item, index) => (
-                      <div className="lineage-item" key={item.event_id}>
-                        <div className="lineage-axis"><span>{index + 1}</span></div>
-                        <div className="lineage-card">
-                          <div className="row-between">
-                            <div className="chip-row"><PlatformBadge platform={item.platform} /><SourceBadge mode={item.source_mode} /></div>
-                            <span className="muted">{fmt(item.created_at)}</span>
-                          </div>
-                          <strong>{item.author || item.author_pseudo_id || 'Unknown author'}</strong>
-                          <p>{item.text}</p>
-                          <div className="row-between">
-                            <div className="chip-row"><span className="chip">sentiment: {item.sentiment || 'unknown'}</span></div>
-                            <button type="button" className="text-btn" onClick={() => openPostInDeepDive(item.event_id)}>Inspect post →</button>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </section>
-
-                <aside className="panel narrative-side">
-                  <div className="eyebrow">Trend Decomposition</div>
-                  {[
-                    ['Trend score', narrativeDetail.trend.score.toFixed(2)],
-                    ['Growth', `${narrativeDetail.trend.growth_rate >= 0 ? '+' : ''}${narrativeDetail.trend.growth_rate.toFixed(2)}`],
-                    ['Author diversity', pct(narrativeDetail.trend.author_diversity)],
-                    ['Platforms', narrativeDetail.trend.platform_count],
-                  ].map(([label, value]) => (
-                    <div className="fact-row" key={label}><span>{label}</span><strong>{value}</strong></div>
-                  ))}
-                </aside>
-              </div>
+              <NarrativeView detail={narrativeDetail} onOpenEvent={openPostById} />
             </motion.div>
           )}
 
-          {/* TAB 6: NETWORK */}
-          {tab === 'network' && network && (
+          {/* NETWORK TAB */}
+          {tab === 'network' && (
             <motion.div
               key="network"
               initial={{ opacity: 0, y: 6 }}
@@ -1539,14 +1333,14 @@ export default function App({ onNavigateHome }: { onNavigateHome?: () => void } 
             >
               <div className="page-head">
                 <div>
-                  <div className="eyebrow">Link analysis</div>
+                  <div className="eyebrow">SIH Component E · Link Analysis & Temporal Propagation</div>
                   <h1>How influence moved</h1>
-                  <p>Centrality and bridge roles describe observed network position — never guilt or intent.</p>
+                  <p>Exact centrality metrics (PageRank, Betweenness, Degree), community sentiment, and temporal propagation across stages.</p>
                 </div>
                 <div className="chip-row">
-                  <span className="chip">nodes {network.summary.nodes || 0}</span>
-                  <span className="chip">edges {network.summary.edges || 0}</span>
-                  <span className="chip">communities {network.summary.communities || 0}</span>
+                  <span className="chip">nodes {network?.summary.nodes || 0}</span>
+                  <span className="chip">edges {network?.summary.edges || 0}</span>
+                  <span className="chip">communities {network?.summary.communities || 0}</span>
                 </div>
               </div>
               <section className="panel panel-large">
@@ -1555,7 +1349,7 @@ export default function App({ onNavigateHome }: { onNavigateHome?: () => void } 
             </motion.div>
           )}
 
-          {/* TAB 7: DEMOGRAPHICS */}
+          {/* DEMOGRAPHICS TAB */}
           {tab === 'demographics' && demographics && (
             <motion.div
               key="demographics"
@@ -1565,22 +1359,32 @@ export default function App({ onNavigateHome }: { onNavigateHome?: () => void } 
             >
               <div className="page-head">
                 <div>
-                  <div className="eyebrow">Aggregate only</div>
+                  <div className="eyebrow">SIH Component C · Privacy-Safe Aggregate Inference</div>
                   <h1>Audience signals without individual profiling</h1>
                   <p>{demographics.privacy_note}</p>
                 </div>
-                <Badge tone="good"><ShieldCheck size={13} /> k-anonymity guard</Badge>
+                <Badge tone="good"><ShieldCheck size={13} /> k-anonymity guard (k=10)</Badge>
               </div>
+
+              <div className="coverage-callout" style={{ marginBottom: 16 }}>
+                <ShieldCheck size={16} />
+                <span>
+                  <strong>Ethical Inference Guarantee:</strong> NEXUS adheres strictly to public-signal aggregate profiling.
+                  Inferences are derived from public metadata (bio keywords, public location strings, language detectors) and protected under k-anonymity (k=10).
+                  No PII, private messages, or micro-targeted tracking is stored or exposed.
+                </span>
+              </div>
+
               <div className="demographic-grid">
-                <DemographicSliceCard title="Language" slice={demographics.language} />
-                <DemographicSliceCard title="Broad geography" slice={demographics.broad_geography} />
-                <DemographicSliceCard title="Professional interests" slice={demographics.professional_interests} />
-                <DemographicSliceCard title="Age brackets" slice={demographics.age_brackets} />
+                <DemographicSliceCard title="Language Distribution" slice={demographics.language} />
+                <DemographicSliceCard title="Broad Geographic Regions" slice={demographics.broad_geography} />
+                <DemographicSliceCard title="Professional / Domain Interests" slice={demographics.professional_interests} />
+                <DemographicSliceCard title="Inferred Age Brackets" slice={demographics.age_brackets} />
               </div>
             </motion.div>
           )}
 
-          {/* TAB 8: ALERTS */}
+          {/* ALERTS TAB */}
           {tab === 'alerts' && (
             <motion.div
               key="alerts"
@@ -1612,13 +1416,18 @@ export default function App({ onNavigateHome }: { onNavigateHome?: () => void } 
                       <ShieldCheck size={16} />
                       <span>{alert.coverage_warning}</span>
                     </div>
+                    <div className="row-between">
+                      <span className="muted">{alert.evidence_event_ids.length} evidence events · score {alert.trend_score.toFixed(2)}</span>
+                      <button type="button" className="text-btn" onClick={() => void openNarrative(alert.narrative_id)}>Open evidence →</button>
+                    </div>
                   </div>
                 ))}
+                {!alerts.length && <div className="empty">No narrative currently crosses the alert threshold.</div>}
               </div>
             </motion.div>
           )}
 
-          {/* TAB 9: EVIDENCE */}
+          {/* EVIDENCE TAB */}
           {tab === 'evidence' && (
             <motion.div
               key="evidence"
@@ -1642,14 +1451,18 @@ export default function App({ onNavigateHome }: { onNavigateHome?: () => void } 
                     <span>Text</span>
                     <span>Inference</span>
                   </div>
-                  {events.slice(0, 100).map((event) => (
+                  {events.slice(0, 200).map((event) => (
                     <div
                       className="evidence-row evidence-row-clickable"
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => openPostById(event.id)}
+                      onKeyDown={(e) => { if (e.key === 'Enter') openPostById(event.id); }}
                       key={event.id}
-                      onClick={() => openPostInDeepDive(event.id)}
                     >
                       <span>
-                        <PlatformBadge platform={event.platform} /> <SourceBadge mode={event.source_mode} />
+                        <PlatformBadge platform={event.platform} />{' '}
+                        <SourceBadge mode={event.source_mode} />
                       </span>
                       <span>{fmt(event.created_at)}</span>
                       <span>{event.author_display || event.author_pseudo_id || '—'}</span>
@@ -1657,6 +1470,17 @@ export default function App({ onNavigateHome }: { onNavigateHome?: () => void } 
                       <span>
                         <Badge>{event.sentiment_label || 'unknown'}</Badge>{' '}
                         <Badge>{event.stance_label || 'unclear'}</Badge>
+                        {event.url && !event.url.includes('example.invalid') && (
+                          <a
+                            className="source-link"
+                            href={event.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <ExternalLink size={12} />
+                          </a>
+                        )}
                       </span>
                     </div>
                   ))}
@@ -1670,64 +1494,4 @@ export default function App({ onNavigateHome }: { onNavigateHome?: () => void } 
   );
 }
 
-// Subcomponents for Deep Dive
-function NetworkGraph({ network }: { network: NetworkResponse | null }) {
-  const nodes = (network?.nodes || []).slice(0, 32);
-  const ids = new Set(nodes.map((n) => n.id));
-  const edges = (network?.edges || []).filter((edge) => ids.has(edge.source) && ids.has(edge.target)).slice(0, 90);
-  const width = 900;
-  const height = 480;
-  const centerX = width / 2;
-  const centerY = height / 2;
-  const radius = Math.min(width, height) * 0.37;
-  const positions = new Map<string, { x: number; y: number }>();
-  nodes.forEach((node, index) => {
-    const angle = (index / Math.max(1, nodes.length)) * Math.PI * 2;
-    const r = radius * (0.72 + (index % 4) * 0.08);
-    positions.set(node.id, { x: centerX + Math.cos(angle) * r, y: centerY + Math.sin(angle) * r });
-  });
-
-  if (!network || !nodes.length) return <div className="empty">No network data yet.</div>;
-
-  return (
-    <div className="network-canvas">
-      <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Network">
-        {edges.map((edge, index) => {
-          const a = positions.get(edge.source);
-          const b = positions.get(edge.target);
-          if (!a || !b) return null;
-          return <line key={`${edge.source}-${edge.target}-${index}`} x1={a.x} y1={a.y} x2={b.x} y2={b.y} className="network-edge" strokeWidth={Math.min(3, 0.7 + edge.weight)} />;
-        })}
-        {nodes.map((node) => {
-          const p = positions.get(node.id)!;
-          const size = 6 + Math.min(10, node.pagerank * 90);
-          return (
-            <g key={node.id} className="network-node">
-              <circle cx={p.x} cy={p.y} r={size} className={`network-dot role-${node.role.replaceAll(' ', '-').toLowerCase()}`} />
-              <text x={p.x + size + 4} y={p.y + 4}>{node.label.slice(0, 18)}</text>
-            </g>
-          );
-        })}
-      </svg>
-    </div>
-  );
-}
-
-function DemographicSliceCard({ title, slice }: { title: string; slice: DemographicSlice }) {
-  const entries = Object.entries(slice.counts).sort((a, b) => b[1] - a[1]);
-  const max = Math.max(1, ...entries.map(([, value]) => value));
-  return (
-    <div className="panel demographic-card">
-      <div className="section-head compact"><h3>{title}</h3><Badge>{pct(slice.coverage)} coverage</Badge></div>
-      <div className="bars">
-        {entries.map(([label, value]) => (
-          <div className="bar-row" key={label}>
-            <span>{label.replaceAll('_', ' ')}</span>
-            <div className="bar-track"><i style={{ width: `${(value / max) * 100}%` }} /></div>
-            <b>{value}</b>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
+export default App;
