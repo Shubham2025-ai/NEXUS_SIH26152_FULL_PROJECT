@@ -36,7 +36,7 @@ from .free_connectors import (
     x_public_bridge,
     youtube_free_search,
 )
-from .priority_free_connectors import telegram_monitored_search
+from .priority_free_connectors import _extract_x_urls, telegram_monitored_search
 
 _ORIGINAL_TELEGRAM_PUBLIC_CHANNEL = telegram_public_channel
 from .meta_discovery import instagram_hashtag_search
@@ -259,7 +259,7 @@ async def workspace_search(request: WorkspaceSearchRequest):
     if request.enable_x:
         if SETTINGS.x_bearer_token:
             jobs.append(("x", "official_x_api_v2", x_recent_search(XSearchRequest(query=request.query, max_results=min(limit, 25)))))
-        elif SETTINGS.x_public_rss_url_template:
+        elif _extract_x_urls(request.query) or SETTINGS.x_public_rss_url_template:
             jobs.append(("x", "x_public_bridge", x_public_bridge(request.query, "", min(limit, 25))))
         else:
             sources["x"] = {
@@ -275,7 +275,7 @@ async def workspace_search(request: WorkspaceSearchRequest):
         jobs.append(("reddit", "public_json", reddit_public_search(request.query, limit)))
     if request.enable_mastodon:
         jobs.append(("mastodon", "public_instance_api", mastodon_search(request.query, min(limit, 40), None)))
-    if request.telegram_channel:
+    if request.enable_telegram and request.telegram_channel:
         tg_call = (
             telegram_public_channel(request.telegram_channel, limit)
             if telegram_public_channel is not _ORIGINAL_TELEGRAM_PUBLIC_CHANNEL

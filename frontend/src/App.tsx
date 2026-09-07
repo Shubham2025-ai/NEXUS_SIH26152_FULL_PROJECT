@@ -50,10 +50,12 @@ import {
   SocialEvent,
   TimelinePoint,
   TrendingKeyword,
+  WorkspaceSearchResponse,
 } from './api';
 import PostExplorer from './PostExplorer';
 import ConnectionCenter from './ConnectionCenter';
 import FreeConnectorPanel from './FreeConnectorPanel';
+import IntelligenceTargetHub, { SearchExecutionOptions } from './IntelligenceTargetHub';
 
 type Tab = 'overview' | 'posts' | 'timeline' | 'trends' | 'narrative' | 'network' | 'demographics' | 'alerts' | 'evidence';
 
@@ -728,26 +730,48 @@ function App({ onNavigateHome }: { onNavigateHome?: () => void } = {}) {
     }
   };
 
-  const runFreshSearch = async () => {
-    const clean = query.trim();
-    if (!clean) return;
-    setLoading(true); setError(null); setNotice(null);
+  const [lastSearchResult, setLastSearchResult] = useState<WorkspaceSearchResponse | null>(null);
+
+  const handleExecuteLiveAnalysis = async (searchQuery: string, options: SearchExecutionOptions) => {
+    setLoading(true);
+    setError(null);
+    setNotice(null);
     try {
-      const result = await api.searchWorkspace(clean, { reset: true, limitPerSource: 15 });
+      const result = await api.searchWorkspace(searchQuery, {
+        reset: options.reset ?? true,
+        limitPerSource: options.limitPerSource ?? 5,
+        enableTelegram: options.enableTelegram,
+        enableX: options.enableX,
+        enableYouTube: options.enableYouTube,
+        enableBluesky: options.enableBluesky,
+        enableReddit: options.enableReddit,
+        enableMastodon: options.enableMastodon,
+        telegramChannel: options.telegramChannel,
+        instagramProfile: options.instagramProfile,
+      });
+      setLastSearchResult(result);
       const okSources = Object.entries(result.sources).filter(([, status]) => status.state === 'OK').map(([name]) => name);
       const failedSources = Object.entries(result.sources).filter(([, status]) => status.state !== 'OK').map(([name]) => name);
-      setActiveQuery(clean);
+      setActiveQuery(searchQuery);
+      setQuery(searchQuery);
       setSelectedNarrativeId(null);
       setSelectedEventId(null);
       setPostDateFilter(undefined);
-      setNotice(`Fresh search: ${result.inserted} post(s) · live sources ${okSources.join(', ') || 'none'}${failedSources.length ? ` · unavailable ${failedSources.join(', ')}` : ''}`);
+      setNotice(`Live analysis complete: ${result.inserted} post(s) ingested · live sources: ${okSources.join(', ') || 'none'}${failedSources.length ? ` · unavailable: ${failedSources.join(', ')}` : ''}`);
       await loadAll();
-      setTab('posts');
+      return result;
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Fresh search failed.');
+      setError(e instanceof Error ? e.message : 'Live analysis failed.');
     } finally {
       setLoading(false);
     }
+  };
+
+  const runFreshSearch = async () => {
+    const clean = query.trim();
+    if (!clean) return;
+    await handleExecuteLiveAnalysis(clean, { reset: true, limitPerSource: 5 });
+    setTab('posts');
   };
 
   const openNarrative = async (id: string) => {
@@ -859,6 +883,18 @@ function App({ onNavigateHome }: { onNavigateHome?: () => void } = {}) {
           <button
             type="button"
             className="btn btn-secondary"
+            onClick={() => {
+              setTab('overview');
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            }}
+            title="Open Intelligence Target Selection Hub"
+          >
+            <Radio size={13} className="text-blue-400 animate-pulse" />
+            <span>Target Hub</span>
+          </button>
+          <button
+            type="button"
+            className="btn btn-secondary"
             disabled={loading}
             onClick={() => action('Demo workspace loaded', api.seedDemo)}
             title="Load SIH deterministic demonstration scenario"
@@ -949,6 +985,15 @@ function App({ onNavigateHome }: { onNavigateHome?: () => void } = {}) {
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.18 }}
             >
+              {/* INTELLIGENCE TARGET SELECTION HUB */}
+              <IntelligenceTargetHub
+                activeQuery={activeQuery}
+                loading={loading}
+                connectors={connectors}
+                onExecuteLiveAnalysis={handleExecuteLiveAnalysis}
+                lastSearchResult={lastSearchResult}
+              />
+
               <div className="page-head">
                 <div>
                   <div className="eyebrow">Workspace · {activeQuery}</div>

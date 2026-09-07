@@ -379,6 +379,12 @@ export const api = {
     options?: {
       reset?: boolean;
       limitPerSource?: number;
+      enableTelegram?: boolean;
+      enableX?: boolean;
+      enableYouTube?: boolean;
+      enableBluesky?: boolean;
+      enableReddit?: boolean;
+      enableMastodon?: boolean;
       telegramChannel?: string;
       instagramProfile?: string;
     },
@@ -387,11 +393,13 @@ export const api = {
     body: JSON.stringify({
       query,
       reset: options?.reset ?? true,
-      limit_per_source: options?.limitPerSource ?? 15,
-      enable_youtube: true,
-      enable_bluesky: true,
-      enable_reddit: true,
-      enable_mastodon: true,
+      limit_per_source: options?.limitPerSource ?? 5,
+      enable_telegram: options?.enableTelegram ?? true,
+      enable_x: options?.enableX ?? true,
+      enable_youtube: options?.enableYouTube ?? true,
+      enable_bluesky: options?.enableBluesky ?? true,
+      enable_reddit: options?.enableReddit ?? true,
+      enable_mastodon: options?.enableMastodon ?? true,
       telegram_channel: options?.telegramChannel || null,
       instagram_profile: options?.instagramProfile || null,
     }),

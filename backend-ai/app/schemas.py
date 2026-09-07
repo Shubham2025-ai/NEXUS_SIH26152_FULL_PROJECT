@@ -121,6 +121,7 @@ class WorkspaceSearchRequest(BaseModel):
     reset: bool = True
     limit_per_source: int = Field(default=15, ge=1, le=40)
     enable_x: bool = True
+    enable_telegram: bool = True
     enable_youtube: bool = True
     enable_bluesky: bool = True
     enable_reddit: bool = True
@@ -130,6 +131,9 @@ class WorkspaceSearchRequest(BaseModel):
 
     @model_validator(mode="after")
     def attach_monitored_telegram_query(self):
+        if not self.enable_telegram:
+            self.telegram_channel = None
+            return self
         settings = get_settings()
         raw = (self.telegram_channel or settings.telegram_public_channels or "telegram,durov").strip()
         raw = raw or "telegram,durov"

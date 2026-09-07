@@ -73,3 +73,34 @@ def test_fresh_workspace_search_clears_previous_topic_without_network_calls(monk
     overview = client.get('/api/overview')
     assert overview.status_code == 200
     assert overview.json()['total_events'] == 0
+
+
+def test_workspace_search_enable_telegram_toggle_and_x_url(monkeypatch):
+    seen_x: dict[str, object] = {}
+
+    async def fake_x_public_bridge(query: str, target: str, limit: int):
+        seen_x['query'] = query
+        return []
+
+    monkeypatch.setattr(main_module, 'x_public_bridge', fake_x_public_bridge)
+
+    res = client.post(
+        '/api/search/workspace',
+        json={
+            'query': 'https://x.com/user/status/123456789',
+            'reset': True,
+            'limit_per_source': 5,
+            'enable_telegram': False,
+            'enable_x': True,
+            'enable_youtube': False,
+            'enable_bluesky': False,
+            'enable_reddit': False,
+            'enable_mastodon': False,
+        },
+    )
+    assert res.status_code == 200
+    data = res.json()
+    assert 'telegram' not in data['sources']
+    assert data['sources']['x']['state'] == 'OK'
+    assert seen_x['query'] == 'https://x.com/user/status/123456789'
+

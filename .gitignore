@@ -20,6 +20,7 @@ dist/
 .vite/
 .vercel/
 frontend/.vercel/
+*.tsbuildinfo
 
 # Java
 backend-java/target/
