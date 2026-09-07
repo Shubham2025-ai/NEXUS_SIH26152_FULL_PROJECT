@@ -321,7 +321,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 4000);
+    const timeoutId = setTimeout(() => controller.abort(), 25000);
 
     const response = await fetch(`${API_BASE}${path}`, {
       ...init,
@@ -350,9 +350,11 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     if (!contentType.includes('application/json')) return (await response.text()) as T;
     return response.json() as Promise<T>;
   } catch (err) {
-    const fallback = getFallbackData(path);
-    if (fallback !== null) {
-      return fallback as T;
+    if (isPublicHost) {
+      const fallback = getFallbackData(path);
+      if (fallback !== null) {
+        return fallback as T;
+      }
     }
     throw err;
   }

@@ -278,13 +278,14 @@ async def workspace_search(request: WorkspaceSearchRequest):
         jobs.append(("reddit", "public_json", reddit_public_search(request.query, limit)))
     if request.enable_mastodon:
         jobs.append(("mastodon", "public_instance_api", mastodon_search(request.query, min(limit, 40), None)))
-    if request.enable_telegram and request.telegram_channel:
-        tg_call = (
-            telegram_public_channel(request.telegram_channel, limit)
-            if telegram_public_channel is not _ORIGINAL_TELEGRAM_PUBLIC_CHANNEL
-            else telegram_monitored_search(request.telegram_channel, limit)
-        )
-        jobs.append(("telegram", "telegram_public_preview", tg_call))
+    if request.enable_telegram:
+        if request.telegram_channel:
+            tg_call = (
+                telegram_public_channel(request.telegram_channel, limit)
+                if telegram_public_channel is not _ORIGINAL_TELEGRAM_PUBLIC_CHANNEL
+                else telegram_monitored_search(request.telegram_channel, limit)
+            )
+            jobs.append(("telegram", "telegram_public_preview", tg_call))
         if SETTINGS.telegram_bot_token:
             jobs.append(("telegram_bot", "telegram_bot_api", telegram_poll(min(limit, 50))))
     if request.instagram_profile:
