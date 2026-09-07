@@ -135,7 +135,7 @@ class WorkspaceSearchRequest(BaseModel):
             self.telegram_channel = None
             return self
         settings = get_settings()
-        raw = (self.telegram_channel or settings.telegram_public_channels or "telegram,durov").strip()
+        raw = (self.telegram_channel or settings.telegram_channel or settings.telegram_public_channels or "telegram,durov").strip()
         raw = raw or "telegram,durov"
         raw = raw.split("||", 1)[0].strip()
         self.telegram_channel = f"{raw}||{self.query}"

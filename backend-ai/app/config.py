@@ -32,6 +32,7 @@ class Settings(BaseSettings):
     x_public_rss_url_template: str = ""
 
     telegram_bot_token: str = ""
+    telegram_channel: str = ""
     telegram_allowed_chat_ids: str = ""
     # Primary zero-key SIH live public source. A local .env value can override or extend this.
     telegram_public_channels: str = "telegram,durov"

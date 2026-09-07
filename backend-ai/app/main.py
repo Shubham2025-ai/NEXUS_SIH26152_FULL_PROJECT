@@ -268,7 +268,10 @@ async def workspace_search(request: WorkspaceSearchRequest):
                 "detail": "Official X API bearer token required for live X ingestion.",
             }
     if request.enable_youtube:
-        jobs.append(("youtube", "yt_dlp_public_metadata", youtube_free_search(request.query, min(limit, 25))))
+        if SETTINGS.youtube_api_key:
+            jobs.append(("youtube", "youtube_data_api_v3", youtube_search(YouTubeSearchRequest(query=request.query, max_videos=min(limit, 10), max_comments_per_video=20))))
+        else:
+            jobs.append(("youtube", "yt_dlp_public_metadata", youtube_free_search(request.query, min(limit, 25))))
     if request.enable_bluesky:
         jobs.append(("bluesky", "public_atproto", bluesky_search(request.query, limit)))
     if request.enable_reddit:
@@ -282,6 +285,8 @@ async def workspace_search(request: WorkspaceSearchRequest):
             else telegram_monitored_search(request.telegram_channel, limit)
         )
         jobs.append(("telegram", "telegram_public_preview", tg_call))
+        if SETTINGS.telegram_bot_token:
+            jobs.append(("telegram_bot", "telegram_bot_api", telegram_poll(min(limit, 50))))
     if request.instagram_profile:
         jobs.append(("instagram", "instaloader_public_profile", instagram_public_profile(request.instagram_profile, min(limit, 20))))
 
