@@ -55,7 +55,7 @@ export const IntelligenceTargetHub: React.FC<IntelligenceTargetHubProps> = ({
 }) => {
   const [mode, setMode] = useState<'topic' | 'target'>('topic');
   const [topicQuery, setTopicQuery] = useState(activeQuery && activeQuery !== '#RiverLinkUpdate' ? activeQuery : 'AI');
-  const [targetType, setTargetType] = useState<'telegram' | 'x_post' | 'instagram'>('telegram');
+  const [targetType, setTargetType] = useState<'telegram' | 'x_post'>('telegram');
   const [targetInput, setTargetInput] = useState('@telegram');
   const [isExpanded, setIsExpanded] = useState(true);
 
@@ -63,9 +63,6 @@ export const IntelligenceTargetHub: React.FC<IntelligenceTargetHubProps> = ({
   const [enableTelegram, setEnableTelegram] = useState(true);
   const [enableYouTube, setEnableYouTube] = useState(true);
   const [enableX, setEnableX] = useState(true);
-  const [enableReddit, setEnableReddit] = useState(true);
-  const [enableBluesky, setEnableBluesky] = useState(true);
-  const [enableMastodon, setEnableMastodon] = useState(true);
 
   // Check X connector status
   const xConnector = connectors.find((c) => c.platform === 'x');
@@ -82,9 +79,9 @@ export const IntelligenceTargetHub: React.FC<IntelligenceTargetHubProps> = ({
       enableTelegram,
       enableYouTube,
       enableX,
-      enableReddit,
-      enableBluesky,
-      enableMastodon,
+      enableReddit: false,
+      enableBluesky: false,
+      enableMastodon: false,
     });
   };
 
@@ -116,19 +113,6 @@ export const IntelligenceTargetHub: React.FC<IntelligenceTargetHubProps> = ({
         enableReddit: false,
         enableBluesky: false,
         enableMastodon: false,
-      });
-    } else if (targetType === 'instagram') {
-      const profile = clean.replace(/^@/, '').trim();
-      await onExecuteLiveAnalysis(`profile:${profile}`, {
-        reset: true,
-        limitPerSource: 10,
-        enableTelegram: false,
-        enableX: false,
-        enableYouTube: false,
-        enableReddit: false,
-        enableBluesky: false,
-        enableMastodon: false,
-        instagramProfile: profile,
       });
     }
   };
@@ -276,9 +260,9 @@ export const IntelligenceTargetHub: React.FC<IntelligenceTargetHubProps> = ({
                     </span>
                   </div>
 
-                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
                     {/* Telegram */}
-                    <label className="flex items-start gap-2 rounded-lg bg-[#111c38] p-2 border border-white/[0.06] cursor-pointer hover:border-blue-500/40 transition-colors">
+                    <label className="flex items-start gap-2 rounded-lg bg-[#111c38] p-2.5 border border-white/[0.06] cursor-pointer hover:border-blue-500/40 transition-colors">
                       <input
                         type="checkbox"
                         checked={enableTelegram}
@@ -287,12 +271,12 @@ export const IntelligenceTargetHub: React.FC<IntelligenceTargetHubProps> = ({
                       />
                       <div className="text-left">
                         <div className="text-xs font-semibold text-slate-200">Telegram</div>
-                        <div className="text-[10px] text-emerald-400">Live Public Channels</div>
+                        <div className="text-[10px] text-emerald-400">Live Channels & Bot API</div>
                       </div>
                     </label>
 
                     {/* YouTube */}
-                    <label className="flex items-start gap-2 rounded-lg bg-[#111c38] p-2 border border-white/[0.06] cursor-pointer hover:border-blue-500/40 transition-colors">
+                    <label className="flex items-start gap-2 rounded-lg bg-[#111c38] p-2.5 border border-white/[0.06] cursor-pointer hover:border-blue-500/40 transition-colors">
                       <input
                         type="checkbox"
                         checked={enableYouTube}
@@ -301,12 +285,12 @@ export const IntelligenceTargetHub: React.FC<IntelligenceTargetHubProps> = ({
                       />
                       <div className="text-left">
                         <div className="text-xs font-semibold text-slate-200">YouTube</div>
-                        <div className="text-[10px] text-emerald-400">Video Metadata (yt-dlp)</div>
+                        <div className="text-[10px] text-emerald-400">Video Metadata & Comments</div>
                       </div>
                     </label>
 
                     {/* X (Twitter) */}
-                    <label className="flex items-start gap-2 rounded-lg bg-[#111c38] p-2 border border-white/[0.06] cursor-pointer hover:border-blue-500/40 transition-colors">
+                    <label className="flex items-start gap-2 rounded-lg bg-[#111c38] p-2.5 border border-white/[0.06] cursor-pointer hover:border-blue-500/40 transition-colors">
                       <input
                         type="checkbox"
                         checked={enableX}
@@ -322,48 +306,6 @@ export const IntelligenceTargetHub: React.FC<IntelligenceTargetHubProps> = ({
                             KEY REQUIRED
                           </div>
                         )}
-                      </div>
-                    </label>
-
-                    {/* Reddit */}
-                    <label className="flex items-start gap-2 rounded-lg bg-[#111c38] p-2 border border-white/[0.06] cursor-pointer hover:border-blue-500/40 transition-colors">
-                      <input
-                        type="checkbox"
-                        checked={enableReddit}
-                        onChange={(e) => setEnableReddit(e.target.checked)}
-                        className="mt-0.5 rounded border-slate-700 bg-slate-900 text-blue-600 focus:ring-0"
-                      />
-                      <div className="text-left">
-                        <div className="text-xs font-semibold text-slate-200">Reddit</div>
-                        <div className="text-[10px] text-emerald-400">Public Feeds</div>
-                      </div>
-                    </label>
-
-                    {/* Bluesky */}
-                    <label className="flex items-start gap-2 rounded-lg bg-[#111c38] p-2 border border-white/[0.06] cursor-pointer hover:border-blue-500/40 transition-colors">
-                      <input
-                        type="checkbox"
-                        checked={enableBluesky}
-                        onChange={(e) => setEnableBluesky(e.target.checked)}
-                        className="mt-0.5 rounded border-slate-700 bg-slate-900 text-blue-600 focus:ring-0"
-                      />
-                      <div className="text-left">
-                        <div className="text-xs font-semibold text-slate-200">Bluesky</div>
-                        <div className="text-[10px] text-emerald-400">ATProto Search</div>
-                      </div>
-                    </label>
-
-                    {/* Mastodon */}
-                    <label className="flex items-start gap-2 rounded-lg bg-[#111c38] p-2 border border-white/[0.06] cursor-pointer hover:border-blue-500/40 transition-colors">
-                      <input
-                        type="checkbox"
-                        checked={enableMastodon}
-                        onChange={(e) => setEnableMastodon(e.target.checked)}
-                        className="mt-0.5 rounded border-slate-700 bg-slate-900 text-blue-600 focus:ring-0"
-                      />
-                      <div className="text-left">
-                        <div className="text-xs font-semibold text-slate-200">Mastodon</div>
-                        <div className="text-[10px] text-emerald-400">Fediverse Live</div>
                       </div>
                     </label>
                   </div>
@@ -404,20 +346,6 @@ export const IntelligenceTargetHub: React.FC<IntelligenceTargetHubProps> = ({
                   >
                     X Post URL (Official oEmbed)
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setTargetType('instagram');
-                      setTargetInput('nasa');
-                    }}
-                    className={`rounded-xl px-3 py-1.5 text-xs font-medium border transition-all ${
-                      targetType === 'instagram'
-                        ? 'bg-blue-600/30 border-blue-400 text-blue-100 shadow-sm'
-                        : 'bg-[#0f1a33] border-white/[0.08] text-slate-400 hover:text-white'
-                    }`}
-                  >
-                    Instagram Profile (@user)
-                  </button>
                 </div>
 
                 <div className="flex flex-col md:flex-row gap-3">
@@ -433,9 +361,7 @@ export const IntelligenceTargetHub: React.FC<IntelligenceTargetHubProps> = ({
                       placeholder={
                         targetType === 'telegram'
                           ? 'Enter public channel handle (e.g. @durov, @telegram)...'
-                          : targetType === 'x_post'
-                          ? 'Paste public post URL (https://x.com/username/status/...)...'
-                          : 'Enter public Instagram username (e.g. nasa, natgeo)...'
+                          : 'Paste public post URL (https://x.com/username/status/...)...'
                       }
                       className="w-full rounded-xl bg-[#0e172e] border border-white/[0.12] pl-10 pr-4 py-2.5 text-sm text-white placeholder-slate-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                     />
@@ -487,25 +413,6 @@ export const IntelligenceTargetHub: React.FC<IntelligenceTargetHubProps> = ({
                       <span className="text-[11px] text-slate-300">
                         Zero-key mode: Uses official unauthenticated oEmbed (publish.x.com) to fetch genuine post text and metadata.
                       </span>
-                    )}
-                    {targetType === 'instagram' && (
-                      <>
-                        <span>Examples:</span>
-                        <button
-                          type="button"
-                          onClick={() => setTargetInput('nasa')}
-                          className="rounded bg-[#121f3d] px-2 py-0.5 text-blue-300 hover:text-white"
-                        >
-                          nasa
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setTargetInput('mit')}
-                          className="rounded bg-[#121f3d] px-2 py-0.5 text-blue-300 hover:text-white"
-                        >
-                          mit
-                        </button>
-                      </>
                     )}
                   </div>
                   <span className="text-[11px] text-emerald-400 flex items-center gap-1">

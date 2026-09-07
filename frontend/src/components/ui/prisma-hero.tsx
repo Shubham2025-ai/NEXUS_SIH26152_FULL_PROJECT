@@ -312,7 +312,7 @@ export const PrismaHero = ({ onNavigateDashboard, className = "" }: PrismaHeroPr
                 </p>
               </div>
               <div className="mt-4 pt-4 border-t border-[#1c2638] text-xs font-mono text-[#5f7495]">
-                Telegram Preview · Bluesky · YouTube ₹0
+                Telegram Bot API · YouTube Live · X Official
               </div>
             </div>
           </SectionReveal>
@@ -530,7 +530,7 @@ export const PrismaHero = ({ onNavigateDashboard, className = "" }: PrismaHeroPr
                 <div className="text-2xl font-mono font-extrabold text-[#5b8cff] mb-4">01</div>
                 <h3 className="text-base font-bold text-white mb-2">Multi-Source Ingestion</h3>
                 <p className="text-xs text-[#8492aa] leading-relaxed">
-                  Fetches public feeds via zero-key fallbacks (Telegram, yt-dlp, Bluesky) and official APIs (X v2, Meta Graph).
+                  Fetches public feeds via verified live bridges (Telegram Bot API, YouTube yt-dlp) and official APIs (X v2).
                 </p>
               </div>
               <div className="mt-6 pt-4 border-t border-[#1c2638] text-[11px] font-mono text-[#8fa8cc]">
@@ -836,7 +836,7 @@ export const PrismaHero = ({ onNavigateDashboard, className = "" }: PrismaHeroPr
             </h2>
 
             <p className="text-sm sm:text-base text-[#9ab0ce] max-w-xl mx-auto mb-10 leading-relaxed">
-              Explore the interactive multi-vector console, inspect live connector streams, examine network graphs,
+              Explore live intelligence streams, examine influence network graphs,
               and verify narrative evidence certificates.
             </p>
 

@@ -123,9 +123,9 @@ class WorkspaceSearchRequest(BaseModel):
     enable_x: bool = True
     enable_telegram: bool = True
     enable_youtube: bool = True
-    enable_bluesky: bool = True
-    enable_reddit: bool = True
-    enable_mastodon: bool = True
+    enable_bluesky: bool = False
+    enable_reddit: bool = False
+    enable_mastodon: bool = False
     telegram_channel: str | None = Field(default=None, max_length=1000)
     instagram_profile: str | None = Field(default=None, max_length=30)
 

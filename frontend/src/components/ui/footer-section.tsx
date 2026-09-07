@@ -39,7 +39,7 @@ const footerSections: FooterSection[] = [
 		],
 	},
 	{
-		label: 'Analyst Console',
+		label: 'Analyst Workspace',
 		links: [
 			{ title: 'Launch Dashboard', href: '/dashboard', isDashboard: true, icon: Terminal },
 			{ title: 'Live Ingestion Hub', href: '/dashboard', isDashboard: true, icon: Radio },

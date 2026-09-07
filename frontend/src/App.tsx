@@ -129,9 +129,9 @@ export default function App({ onNavigateHome }: { onNavigateHome?: () => void } 
     telegram: true,
     x: true,
     youtube: true,
-    reddit: true,
-    bluesky: true,
-    mastodon: true,
+    reddit: false,
+    bluesky: false,
+    mastodon: false,
     instagram: false,
     facebook: false,
   });
@@ -262,9 +262,9 @@ export default function App({ onNavigateHome }: { onNavigateHome?: () => void } 
         enableTelegram: selectedSources.telegram,
         enableX: selectedSources.x,
         enableYouTube: selectedSources.youtube,
-        enableBluesky: selectedSources.bluesky,
-        enableReddit: selectedSources.reddit,
-        enableMastodon: selectedSources.mastodon,
+        enableBluesky: false,
+        enableReddit: false,
+        enableMastodon: false,
       });
 
       // Step 2: Ingest Overview & Timeline & Events
@@ -435,17 +435,6 @@ export default function App({ onNavigateHome }: { onNavigateHome?: () => void } 
           </div>
 
           <div className="report-topbar-actions">
-            {events.length > 0 && (
-              <button
-                type="button"
-                className="btn-minimal"
-                onClick={() => setViewMode('deep_dive')}
-                title="Open analyst console"
-              >
-                <span>Console</span>
-                <ArrowRight size={13} />
-              </button>
-            )}
             {onNavigateHome && (
               <button
                 type="button"
@@ -629,15 +618,6 @@ export default function App({ onNavigateHome }: { onNavigateHome?: () => void } 
               <Search size={13} />
               <span>New Investigation</span>
             </button>
-            <button
-              type="button"
-              className="btn-minimal btn-minimal-primary"
-              onClick={() => setViewMode('deep_dive')}
-              title="Open the 9-tab analyst deep dive console"
-            >
-              <span>Deep Dive Console</span>
-              <ArrowRight size={13} />
-            </button>
             {onNavigateHome && (
               <button
                 type="button"
@@ -785,14 +765,6 @@ export default function App({ onNavigateHome }: { onNavigateHome?: () => void } 
                             {Object.entries(n.platform_mix).map(([p, count]) => (
                               <span key={p} className="chip">{p}: {count}</span>
                             ))}
-                            <button
-                              type="button"
-                              className="text-btn"
-                              style={{ marginLeft: 'auto', fontSize: 11.5 }}
-                              onClick={() => void openNarrativeInDeepDive(n.id)}
-                            >
-                              Inspect Full Lineage in Console →
-                            </button>
                           </div>
                         </div>
                       )}
@@ -1111,24 +1083,6 @@ export default function App({ onNavigateHome }: { onNavigateHome?: () => void } 
             )}
           </section>
 
-          {/* 8. LEVEL 2 BRIDGE: DEEP DIVE CALLOUT */}
-          <div className="deep-dive-callout">
-            <div className="deep-dive-copy">
-              <h4>Need Complete Forensic Analysis?</h4>
-              <p>
-                Access all 9 specialized intelligence modules, including detailed NLP inspection, geographic breakdowns, and raw JSON export.
-              </p>
-            </div>
-            <button
-              type="button"
-              className="btn-minimal btn-minimal-primary"
-              style={{ height: 38, padding: '0 16px', fontSize: 13 }}
-              onClick={() => setViewMode('deep_dive')}
-            >
-              <span>Open 9-Tab Console</span>
-              <ArrowRight size={14} />
-            </button>
-          </div>
         </article>
       </div>
     );

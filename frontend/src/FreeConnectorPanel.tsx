@@ -68,11 +68,11 @@ export default function FreeConnectorPanel() {
         reset: true,
         limit_per_source: 15,
         enable_youtube: true,
-        enable_bluesky: true,
-        enable_reddit: true,
-        enable_mastodon: true,
+        enable_bluesky: false,
+        enable_reddit: false,
+        enable_mastodon: false,
         telegram_channel: !targetIsX && cleanTarget ? cleanTarget : null,
-        instagram_profile: !targetIsX && cleanTarget && cleanTarget.length <= 30 ? cleanTarget : null,
+        instagram_profile: null,
       });
 
       let totalInserted = Number(result?.inserted || 0);
@@ -195,36 +195,6 @@ export default function FreeConnectorPanel() {
               {busy === 'youtube' ? <Loader2 size={11} className="animate-spin" /> : null}
               + YouTube ₹0
             </button>
-            <button
-              type="button"
-              className="fsl-btn fsl-btn-subtle"
-              disabled={!!busy || !query.trim()}
-              onClick={() => run('bluesky', () => post('/api/connectors/bluesky/search', { query: query.trim(), limit: 25 }))}
-              title="Append Bluesky public AT Protocol posts"
-            >
-              {busy === 'bluesky' ? <Loader2 size={11} className="animate-spin" /> : null}
-              + Bluesky
-            </button>
-            <button
-              type="button"
-              className="fsl-btn fsl-btn-subtle"
-              disabled={!!busy || !query.trim()}
-              onClick={() => run('reddit', () => post('/api/connectors/reddit/search', { query: query.trim(), limit: 25 }))}
-              title="Append Reddit public JSON posts"
-            >
-              {busy === 'reddit' ? <Loader2 size={11} className="animate-spin" /> : null}
-              + Reddit
-            </button>
-            <button
-              type="button"
-              className="fsl-btn fsl-btn-subtle"
-              disabled={!!busy || !query.trim()}
-              onClick={() => run('mastodon', () => post('/api/connectors/mastodon/search', { query: query.trim(), limit: 25, base_url: null }))}
-              title="Append Mastodon instance search results"
-            >
-              {busy === 'mastodon' ? <Loader2 size={11} className="animate-spin" /> : null}
-              + Mastodon
-            </button>
           </div>
         </div>
 
@@ -241,26 +211,6 @@ export default function FreeConnectorPanel() {
             >
               {busy === 'telegram' ? <Loader2 size={11} className="animate-spin" /> : null}
               + Telegram
-            </button>
-            <button
-              type="button"
-              className="fsl-btn fsl-btn-subtle"
-              disabled={!!busy || !target.trim() || targetLooksX || target.trim().replace(/^@/, '').length > 30}
-              onClick={() => run('instagram', () => post('/api/connectors/instagram/public', { profile: target.trim().replace(/^@/, ''), limit: 12 }))}
-              title="Fetch public Instagram profile preview"
-            >
-              {busy === 'instagram' ? <Loader2 size={11} className="animate-spin" /> : null}
-              + IG Profile
-            </button>
-            <button
-              type="button"
-              className="fsl-btn fsl-btn-subtle"
-              disabled={!!busy || !cleanHashtag || cleanHashtag.includes(' ')}
-              onClick={() => run('instagramTag', () => post('/api/connectors/instagram/hashtag', { hashtag: cleanHashtag, limit: 20 }))}
-              title="Fetch Instagram public hashtag feed"
-            >
-              {busy === 'instagramTag' ? <Loader2 size={11} className="animate-spin" /> : null}
-              + IG Tag
             </button>
             <button
               type="button"
