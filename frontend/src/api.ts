@@ -44,6 +44,14 @@ export interface NarrativeSummary {
   source_modes: Record<string, number>;
 }
 
+export interface TrendingKeyword {
+  term: string;
+  count: number;
+  platforms: string[];
+  growth_rate: number;
+  sentiment_bias: string;
+}
+
 export interface Overview {
   total_events: number;
   platform_mix: Record<string, number>;
@@ -53,6 +61,7 @@ export interface Overview {
   rising_narratives: number;
   alerts: number;
   top_narratives: NarrativeSummary[];
+  trending_keywords?: TrendingKeyword[];
   latest_event_at?: string | null;
   coverage_note: string;
 }
@@ -62,6 +71,29 @@ export interface TimelinePoint {
   count: number;
   sentiments: Record<string, number>;
   platforms: Record<string, number>;
+  stances?: Record<string, number>;
+  emotions?: Record<string, number>;
+  avg_sentiment?: number;
+}
+
+export interface CommunityDetail {
+  community_id: number;
+  node_count: number;
+  event_count: number;
+  earliest_seen: string;
+  dominant_sentiment: string;
+  sentiment_mix: Record<string, number>;
+  lead_node: string;
+}
+
+export interface TemporalPropagationStage {
+  step: number;
+  community_id: number;
+  time: string;
+  lead_node: string;
+  dominant_sentiment: string;
+  node_count: number;
+  summary: string;
 }
 
 export interface GraphNode {
@@ -73,6 +105,7 @@ export interface GraphNode {
   degree_centrality: number;
   community: number;
   role: string;
+  sentiment?: string;
   explanation: string;
 }
 
@@ -93,6 +126,8 @@ export interface NetworkResponse {
     high_reach_nodes?: number;
     bridge_nodes?: number;
   };
+  communities_detail?: CommunityDetail[];
+  temporal_propagation?: TemporalPropagationStage[];
 }
 
 export interface AlertItem {
@@ -324,8 +359,9 @@ export const api = {
   health: () => request<{ status: string }>('/health'),
   connectorStatus: () => request<{ connectors: ConnectorStatus[] }>('/api/connectors/status'),
   overview: () => request<Overview>('/api/overview'),
-  timeline: () => request<{ bucket_minutes: number; points: TimelinePoint[] }>('/api/timeline'),
-  narratives: () => request<{ narratives: NarrativeSummary[] }>('/api/narratives'),
+  timeline: (minutes: number = 15) => request<{ bucket_minutes: number; points: TimelinePoint[] }>(`/api/timeline?minutes=${minutes}`),
+  trends: () => request<{ narratives: NarrativeSummary[]; trending_keywords?: TrendingKeyword[] }>('/api/trends'),
+  narratives: () => request<{ narratives: NarrativeSummary[]; trending_keywords?: TrendingKeyword[] }>('/api/narratives'),
   narrative: (id: string) => request<NarrativeDetail>(`/api/narratives/${encodeURIComponent(id)}`),
   network: (id?: string) => request<NetworkResponse>(`/api/network${id ? `?narrative_id=${encodeURIComponent(id)}` : ''}`),
   demographics: () => request<DemographicsResponse>('/api/demographics'),

@@ -20,6 +20,7 @@ from .analytics import (
     overview,
     seed_demo_events,
     timeline,
+    top_workspace_keywords,
 )
 from .certificates import build_narrative_certificate, certificate_summary
 from .collector import COLLECTOR, CollectorStartRequest
@@ -458,13 +459,17 @@ def api_overview():
 
 
 @app.get("/api/timeline", tags=["analytics"])
-def api_timeline(minutes: int = Query(default=15, ge=5, le=120)):
+def api_timeline(minutes: int = Query(default=15, ge=5, le=360)):
     return {"bucket_minutes": minutes, "points": timeline(STORE.list_events(limit=5000), minutes)}
 
 
 @app.get("/api/trends", tags=["analytics"])
 def api_trends():
-    return {"narratives": narrative_summaries(STORE)}
+    events = STORE.list_events(limit=5000)
+    return {
+        "narratives": narrative_summaries(STORE),
+        "trending_keywords": top_workspace_keywords(events, 15),
+    }
 
 
 @app.get("/api/narratives", tags=["analytics"])

@@ -7,25 +7,38 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from .analytics import assign_clusters, enrich_event
+from .config import get_settings
 from .connectors import ConnectorError, telegram_poll, x_recent_search, youtube_search
 from .db import get_store
+from .free_connectors import (
+    bluesky_search,
+    mastodon_search,
+    reddit_public_search,
+    x_public_bridge,
+    youtube_free_search,
+)
+from .priority_free_connectors import telegram_monitored_search
 from .schemas import XSearchRequest, YouTubeSearchRequest
 
 
 class CollectorStartRequest(BaseModel):
     query: str = Field(default="#RiverLinkUpdate", min_length=1, max_length=300)
-    interval_seconds: int = Field(default=60, ge=60, le=3600)
+    interval_seconds: int = Field(default=30, ge=10, le=3600)
     enable_telegram: bool = True
     enable_x: bool = False
     enable_youtube: bool = False
+    enable_bluesky: bool = False
+    enable_reddit: bool = False
+    enable_mastodon: bool = False
 
 
 class CollectorManager:
     """Small hackathon-safe scheduler for continuous ingestion.
 
-    X and YouTube are opt-in because each call consumes external quota/credits.
-    Telegram is enabled by default and remains constrained to chats visible to the
-    configured authorized bot. One manager exists per FastAPI process.
+    X and YouTube API calls consume external quota/credits when using official APIs.
+    Telegram is enabled by default: uses the official Bot API if configured, or
+    seamlessly falls back to monitored public channels in zero-key mode.
+    One manager exists per FastAPI process.
     """
 
     def __init__(self) -> None:
@@ -73,13 +86,14 @@ class CollectorManager:
             self._last_run_at = datetime.now(timezone.utc)
             self._cycles += 1
             try:
-                await asyncio.wait_for(self._stop.wait(), timeout=self._config.interval_seconds if self._config else 60)
+                await asyncio.wait_for(self._stop.wait(), timeout=self._config.interval_seconds if self._config else 30)
             except asyncio.TimeoutError:
                 continue
 
     async def _run_cycle(self) -> dict[str, Any]:
         config = self._config or CollectorStartRequest()
         store = get_store()
+        settings = get_settings()
         report: dict[str, Any] = {"inserted": 0, "platforms": {}}
 
         async def process(platform: str, coro):
@@ -107,14 +121,40 @@ class CollectorManager:
                 report["platforms"][platform] = {"state": "ERROR", "detail": str(exc)[:300]}
 
         if config.enable_telegram:
-            await process("telegram", telegram_poll(100))
+            if settings.telegram_bot_token:
+                await process("telegram", telegram_poll(100))
+            else:
+                channel_spec = f"{settings.telegram_public_channels or 'NexusSIHDemo'}||{config.query}"
+                await process("telegram", telegram_monitored_search(channel_spec, 25))
+
         if config.enable_x:
-            await process("x", x_recent_search(XSearchRequest(query=config.query, max_results=20)))
+            if settings.x_bearer_token:
+                await process("x", x_recent_search(XSearchRequest(query=config.query, max_results=20)))
+            elif settings.x_public_rss_url_template:
+                await process("x", x_public_bridge(config.query, "", 20))
+            else:
+                report["platforms"]["x"] = {
+                    "state": "CREDENTIALS_REQUIRED",
+                    "detail": "Official X API bearer token or bridge template required for continuous X search.",
+                }
+
         if config.enable_youtube:
-            await process(
-                "youtube",
-                youtube_search(YouTubeSearchRequest(query=config.query, max_videos=2, max_comments_per_video=15)),
-            )
+            if settings.youtube_api_key:
+                await process(
+                    "youtube",
+                    youtube_search(YouTubeSearchRequest(query=config.query, max_videos=2, max_comments_per_video=15)),
+                )
+            else:
+                await process("youtube", youtube_free_search(config.query, 10))
+
+        if config.enable_bluesky:
+            await process("bluesky", bluesky_search(config.query, 20))
+
+        if config.enable_reddit:
+            await process("reddit", reddit_public_search(config.query, 20))
+
+        if config.enable_mastodon:
+            await process("mastodon", mastodon_search(config.query, 20))
 
         if report["inserted"]:
             assign_clusters(store)

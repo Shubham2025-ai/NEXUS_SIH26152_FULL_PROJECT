@@ -348,7 +348,10 @@ def build_network(events: list[SocialEvent], narrative_id: str | None = None) ->
         if not source:
             continue
         if e.parent_event_id and e.parent_event_id in event_author:
-            add_edge(source, event_author[e.parent_event_id], "reply", 1.5)
+            is_repost = e.event_type in {"repost", "retweet", "quote"} or "rt @" in e.text.lower()
+            edge_type = "repost" if is_repost else "reply"
+            weight = 1.25 if is_repost else 1.5
+            add_edge(source, event_author[e.parent_event_id], edge_type, weight)
         for mention in e.mentions:
             target = handle_to_pseudo.get(mention.lower().lstrip("@"))
             if target:
@@ -370,7 +373,13 @@ def build_network(events: list[SocialEvent], narrative_id: str | None = None) ->
             add_edge(a, b, "narrative-coamplification", 0.2)
 
     if graph.number_of_nodes() == 0:
-        return {"nodes": [], "edges": [], "summary": {"nodes": 0, "edges": 0}}
+        return {
+            "nodes": [],
+            "edges": [],
+            "summary": {"nodes": 0, "edges": 0, "communities": 0, "high_reach_nodes": 0, "bridge_nodes": 0},
+            "communities_detail": [],
+            "temporal_propagation": [],
+        }
 
     undirected = graph.to_undirected()
     pagerank = nx.pagerank(graph, weight="weight") if graph.number_of_edges() else {n: 0.0 for n in graph.nodes}
@@ -383,12 +392,20 @@ def build_network(events: list[SocialEvent], narrative_id: str | None = None) ->
         communities = [{n} for n in graph.nodes]
     community_by_node = {node: idx for idx, community in enumerate(communities) for node in community}
 
+    # Author sentiment lookup
+    author_sentiments: dict[str, list[str]] = defaultdict(list)
+    for e in chosen:
+        if e.author_pseudo_id and e.sentiment_label:
+            author_sentiments[e.author_pseudo_id].append(e.sentiment_label)
+
     nodes = []
     for node, attrs in graph.nodes(data=True):
         pr = float(pagerank.get(node, 0))
         bt = float(betweenness.get(node, 0))
         dg = float(degree.get(node, 0))
         role = "Bridge Node" if bt >= 0.12 else ("High Reach Node" if pr >= max(0.08, np.percentile(list(pagerank.values()), 75)) else "Participant")
+        sents = Counter(author_sentiments.get(node, []))
+        node_sentiment = sents.most_common(1)[0][0] if sents else "neutral"
         nodes.append(
             {
                 "id": node,
@@ -399,6 +416,7 @@ def build_network(events: list[SocialEvent], narrative_id: str | None = None) ->
                 "degree_centrality": round(dg, 5),
                 "community": community_by_node.get(node, 0),
                 "role": role,
+                "sentiment": node_sentiment,
                 "explanation": (
                     "Connects otherwise separated communities in the observed interaction graph."
                     if role == "Bridge Node"
@@ -421,6 +439,48 @@ def build_network(events: list[SocialEvent], narrative_id: str | None = None) ->
         )
 
     nodes.sort(key=lambda n: (n["pagerank"], n["betweenness"]), reverse=True)
+
+    # Community-level sentiment & chronological adoption
+    community_events: dict[int, list[SocialEvent]] = defaultdict(list)
+    for e in chosen:
+        if e.author_pseudo_id and e.author_pseudo_id in community_by_node:
+            community_events[community_by_node[e.author_pseudo_id]].append(e)
+
+    community_stats: list[dict[str, Any]] = []
+    for comm_id, c_events in community_events.items():
+        s_counts = Counter(e.sentiment_label or "unknown" for e in c_events)
+        dominant = s_counts.most_common(1)[0][0] if s_counts else "neutral"
+        earliest = min(e.created_at for e in c_events)
+        comm_nodes = [n for n in nodes if n["community"] == comm_id]
+        lead_node = comm_nodes[0]["label"] if comm_nodes else f"Group-{comm_id}"
+        community_stats.append(
+            {
+                "community_id": comm_id,
+                "node_count": len(comm_nodes),
+                "event_count": len(c_events),
+                "earliest_seen": earliest,
+                "dominant_sentiment": dominant,
+                "sentiment_mix": dict(s_counts),
+                "lead_node": lead_node,
+            }
+        )
+    community_stats.sort(key=lambda c: c["earliest_seen"])
+
+    # Temporal propagation stages
+    temporal_propagation = []
+    for step, c_stat in enumerate(community_stats, start=1):
+        temporal_propagation.append(
+            {
+                "step": step,
+                "community_id": c_stat["community_id"],
+                "time": c_stat["earliest_seen"],
+                "lead_node": c_stat["lead_node"],
+                "dominant_sentiment": c_stat["dominant_sentiment"],
+                "node_count": c_stat["node_count"],
+                "summary": f"Stage {step}: Active in Community {c_stat['community_id']} (led by {c_stat['lead_node']}, sentiment: {c_stat['dominant_sentiment']})",
+            }
+        )
+
     return {
         "nodes": nodes,
         "edges": edges,
@@ -431,7 +491,65 @@ def build_network(events: list[SocialEvent], narrative_id: str | None = None) ->
             "high_reach_nodes": sum(1 for n in nodes if n["role"] == "High Reach Node"),
             "bridge_nodes": sum(1 for n in nodes if n["role"] == "Bridge Node"),
         },
+        "communities_detail": community_stats,
+        "temporal_propagation": temporal_propagation,
     }
+
+
+def _normalize_region(raw: str | None) -> str:
+    if not raw or not raw.strip():
+        return "unknown"
+    lower = raw.lower().strip()
+    if lower in {"west", "west india", "western india"} or any(t in lower for t in ["mumbai", "pune", "maharashtra", "gujarat", "ahmedabad", "surat", "goa", "nagpur"]):
+        return "India - West"
+    if lower in {"north", "north india", "northern india"} or any(t in lower for t in ["delhi", "ncr", "noida", "gurgaon", "punjab", "haryana", "jaipur", "rajasthan", "lucknow", "uttar pradesh", "chandigarh", "shimla", "dehradun"]):
+        return "India - North"
+    if lower in {"south", "south india", "southern india"} or any(t in lower for t in ["bengaluru", "bangalore", "karnataka", "hyderabad", "telangana", "chennai", "tamil nadu", "kerala", "kochi", "andhra"]):
+        return "India - South"
+    if lower in {"central", "east", "eastern india"} or any(t in lower for t in ["kolkata", "west bengal", "bihar", "patna", "odisha", "jharkhand", "assam", "bhopal", "indore", "madhya pradesh"]):
+        return "India - East / Central"
+    if any(t in lower for t in ["india", "bharat", "in"]):
+        return "India - Metro / National"
+    if any(t in lower for t in ["usa", "united states", "america", "nyc", "new york", "california", "san francisco", "texas", "canada", "toronto"]):
+        return "North America"
+    if any(t in lower for t in ["uk", "london", "england", "germany", "berlin", "france", "paris", "europe", "amsterdam"]):
+        return "Europe"
+    if any(t in lower for t in ["singapore", "tokyo", "japan", "australia", "sydney", "dubai", "uae"]):
+        return "Asia-Pacific & Middle East"
+    return raw.strip().title() if len(raw.strip()) >= 3 else "unknown"
+
+
+def _infer_profession(text: str, bio: str, display: str) -> str | None:
+    combined = f" {display} {bio} {text} ".lower()
+    words = set(re.findall(r"\b[a-z0-9+#.-]+\b", combined))
+    if words & {"developer", "engineer", "software", "tech", "technology", "coding", "python", "devops", "cloud", "fullstack", "programmer", "architect"} or "ai" in words or "ml" in words or "data science" in combined:
+        return "Tech & Engineering"
+    if words & {"journalist", "reporter", "editor", "news", "media", "correspondent", "press", "anchor", "columnist"}:
+        return "Media & Journalism"
+    if words & {"policy", "governance", "ministry", "official", "bureaucrat", "ias", "ips", "advocate", "lawyer", "legal"} or "public policy" in combined or "public_policy" in combined or "civil service" in combined:
+        return "Policy & Governance"
+    if words & {"professor", "researcher", "phd", "scholar", "scientist", "university", "faculty", "academic", "institute", "postdoc"}:
+        return "Academia & Research"
+    if words & {"activist", "ngo", "community", "volunteer", "climate", "environment", "rights"} or "social work" in combined:
+        return "Civil Society & Activism"
+    if words & {"finance", "analyst", "investor", "founder", "entrepreneur", "business", "economics", "markets"} or "local business" in combined or "local_business" in combined:
+        return "Business & Finance"
+    if words & {"doctor", "physician", "health", "medical", "hospital", "nurse", "clinic", "surgeon"}:
+        return "Public Health & Medicine"
+    return None
+
+
+def _infer_age_bracket(text: str, bio: str) -> str | None:
+    combined = f"{bio} {text}".lower()
+    if any(w in combined for w in ["student", "undergrad", "college", "campus", "intern", "fresher", "class of 202", "gen-z", "studying"]):
+        return "18–24 (Student / Early Career)"
+    if any(w in combined for w in ["engineer at", "developer at", "analyst at", "working at", "founder @", "tech lead", "product manager", "mid-career"]):
+        return "25–34 (Professional / Mid Career)"
+    if any(w in combined for w in ["director", "head of", "principal", "vp", "senior manager", "partner", "associate professor", "parent"]):
+        return "35–49 (Senior Professional)"
+    if any(w in combined for w in ["retired", "veteran", "emeritus", "former director", "advisor", "chairman", "30+ years"]):
+        return "50+ (Experienced / Senior)"
+    return None
 
 
 def demographics(events: list[SocialEvent]) -> dict[str, Any]:
@@ -440,14 +558,38 @@ def demographics(events: list[SocialEvent]) -> dict[str, Any]:
         if not e.author_pseudo_id:
             continue
         profile = e.public_profile or {}
-        row = by_user.setdefault(e.author_pseudo_id, {"language": e.language or "unknown"})
-        row["language"] = profile.get("language") or row.get("language") or "unknown"
-        if profile.get("region"):
-            row["region"] = profile["region"]
-        if profile.get("professional_interest"):
-            row["professional_interest"] = profile["professional_interest"]
-        if profile.get("age_bracket"):
-            row["age_bracket"] = profile["age_bracket"]
+        row = by_user.setdefault(e.author_pseudo_id, {})
+
+        # Language: preserve provided, inferred, or fallback
+        if "language" not in row or row["language"] == "unknown":
+            row["language"] = profile.get("language") or e.language or safe_language(e.text)
+
+        # Broad Geography: normalize or infer from public text/bio/location
+        if "region" not in row or row["region"] == "unknown":
+            raw_reg = profile.get("region") or profile.get("location")
+            if not raw_reg:
+                raw_reg = _normalize_region(f"{profile.get('bio', '')} {e.text} {e.author_display or ''}")
+            row["region"] = _normalize_region(raw_reg)
+
+        # Professional Interest: normalize or infer from public profile cues
+        if "professional_interest" not in row or row["professional_interest"] == "unknown":
+            prof = profile.get("professional_interest") or _infer_profession(e.text, str(profile.get("bio", "")), e.author_display or "")
+            row["professional_interest"] = (
+                "Tech & Engineering" if prof in {"technology", "engineering"}
+                else "Policy & Governance" if prof in {"public_policy"}
+                else "Business & Finance" if prof in {"local_business"}
+                else "Civil Society & Activism" if prof in {"student"}
+                else prof or "unknown"
+            )
+
+        # Age Bracket: explicit or inferred from life-stage signals
+        if "age_bracket" not in row or row["age_bracket"] == "unknown":
+            age = profile.get("age_bracket") or _infer_age_bracket(e.text, str(profile.get("bio", "")))
+            if not age and row.get("professional_interest") == "Civil Society & Activism":
+                age = "18–24 (Student / Early Career)"
+            elif not age and row.get("professional_interest") in {"Tech & Engineering", "Business & Finance"}:
+                age = "25–34 (Professional / Mid Career)"
+            row["age_bracket"] = age or "unknown"
 
     total = len(by_user)
     k = SETTINGS.k_anon_min_group
@@ -466,7 +608,7 @@ def demographics(events: list[SocialEvent]) -> dict[str, Any]:
             "coverage": round(coverage, 3),
             "confidence": round(confidence, 3),
             "minimum_group_size": k,
-            "method": "aggregate-public-profile-signals",
+            "method": "aggregate-public-signal-inference",
         }
 
     return {
@@ -475,7 +617,7 @@ def demographics(events: list[SocialEvent]) -> dict[str, Any]:
         "broad_geography": aggregate("region"),
         "professional_interests": aggregate("professional_interest"),
         "age_brackets": aggregate("age_bracket"),
-        "privacy_note": "Only aggregate anonymized distributions are returned; small groups are suppressed.",
+        "privacy_note": "Only aggregate anonymized distributions are returned; groups below k=10 are suppressed.",
     }
 
 
@@ -488,12 +630,27 @@ def timeline(events: list[SocialEvent], minutes: int = 15) -> list[dict[str, Any
         group = buckets[bucket]
         sentiments = Counter(e.sentiment_label or "unknown" for e in group)
         platforms = Counter(e.platform for e in group)
+        stances = Counter(e.stance_label or "unclear" for e in group)
+
+        # Nuanced emotions aggregation: anxiety, excitement, anger, sadness
+        emotions_agg: dict[str, float] = defaultdict(float)
+        for e in group:
+            for em, score in (e.emotion_scores or {}).items():
+                if em in {"anxiety", "excitement", "anger", "sadness"} and score > 0:
+                    emotions_agg[em] += score
+
+        scores = [e.sentiment_score for e in group if e.sentiment_score is not None]
+        avg_score = round(sum(scores) / len(scores), 3) if scores else 0.0
+
         rows.append(
             {
                 "time": bucket,
                 "count": len(group),
                 "sentiments": dict(sentiments),
                 "platforms": dict(platforms),
+                "stances": dict(stances),
+                "emotions": {k: round(v, 2) for k, v in emotions_agg.items()},
+                "avg_sentiment": avg_score,
             }
         )
     return rows
@@ -561,6 +718,48 @@ def alerts(store: EventStore) -> list[AlertOut]:
     return sorted(output, key=lambda a: (a.trend_score, a.triggered_at), reverse=True)
 
 
+def top_workspace_keywords(events: list[SocialEvent], top_n: int = 15) -> list[dict[str, Any]]:
+    """Rank workspace-wide trending keywords and topic clusters with frequency, growth, and platform dispersion."""
+    if not events:
+        return []
+    term_counts: Counter[str] = Counter()
+    term_platforms: dict[str, set[str]] = defaultdict(set)
+    term_sentiments: dict[str, list[str]] = defaultdict(list)
+    times = sorted(e.created_at for e in events)
+    recent_cutoff = times[len(times) // 2] if len(times) > 4 else None
+    recent_counts: Counter[str] = Counter()
+
+    for e in events:
+        extracted = [f"#{t}" for t in e.hashtags] + [t for t in e.topic_terms if len(t) >= 3 and not t.isdigit()]
+        for term in set(extracted):
+            clean = term.lower().strip()
+            if len(clean) < 3 or clean in STOPWORDS:
+                continue
+            term_counts[clean] += 1
+            term_platforms[clean].add(e.platform)
+            if e.sentiment_label:
+                term_sentiments[clean].append(e.sentiment_label)
+            if recent_cutoff and e.created_at >= recent_cutoff:
+                recent_counts[clean] += 1
+
+    top = []
+    for term, count in term_counts.most_common(top_n):
+        rec = recent_counts.get(term, 0)
+        earlier = count - rec
+        growth = (rec - earlier) / max(1, earlier)
+        sents = Counter(term_sentiments.get(term, []))
+        top.append(
+            {
+                "term": term,
+                "count": count,
+                "platforms": sorted(term_platforms.get(term, set())),
+                "growth_rate": round(float(growth), 2),
+                "sentiment_bias": sents.most_common(1)[0][0] if sents else "neutral",
+            }
+        )
+    return top
+
+
 def overview(store: EventStore) -> dict[str, Any]:
     events = store.list_events(limit=5000)
     narratives = narrative_summaries(store) if events else []
@@ -577,6 +776,7 @@ def overview(store: EventStore) -> dict[str, Any]:
         "rising_narratives": sum(1 for n in narratives if n["trend"]["status"] in {"RISING", "VIRAL"}),
         "alerts": len(alert_list),
         "top_narratives": narratives[:5],
+        "trending_keywords": top_workspace_keywords(events, 12),
         "latest_event_at": max((e.created_at for e in events), default=None),
         "coverage_note": "All analytics are bounded by configured connector/query coverage. Earliest origin means earliest observed in this dataset.",
     }
@@ -591,6 +791,13 @@ def seed_demo_events(now: datetime | None = None) -> list[SocialEventIn]:
     regions = ["West", "West", "Central", "North", "South"]
     interests = ["student", "technology", "local_business", "public_policy", "engineering"]
     languages = ["en", "en", "hi", "mr", "en"]
+    age_brackets = [
+        "25–34 (Professional / Mid Career)",
+        "18–24 (Student / Early Career)",
+        "35–49 (Senior Professional)",
+        "25–34 (Professional / Mid Career)",
+        "50+ (Experienced / Senior)",
+    ]
 
     def add(
         idx: int,
@@ -622,6 +829,7 @@ def seed_demo_events(now: datetime | None = None) -> list[SocialEventIn]:
                     "language": languages[profile_index],
                     "region": regions[profile_index],
                     "professional_interest": interests[profile_index],
+                    "age_bracket": age_brackets[profile_index],
                 },
                 source_mode=source_mode,  # type: ignore[arg-type]
                 connector_run_id="demo-seed-v1",

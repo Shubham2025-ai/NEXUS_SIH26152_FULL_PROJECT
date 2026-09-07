@@ -49,6 +49,7 @@ import {
   Overview,
   SocialEvent,
   TimelinePoint,
+  TrendingKeyword,
 } from './api';
 import PostExplorer from './PostExplorer';
 import ConnectionCenter from './ConnectionCenter';
@@ -161,42 +162,228 @@ function TrendCard({ narrative, onOpen }: { narrative: NarrativeSummary; onOpen:
   );
 }
 
-function TimelineView({ points }: { points: TimelinePoint[] }) {
-  const data = points.map((point) => ({
-    time: new Date(point.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-    count: point.count,
-    negative: point.sentiments.negative || 0,
-    positive: point.sentiments.positive || 0,
-    neutral: point.sentiments.neutral || 0,
-  }));
+function SIHPipelineBanner({ activeTab, onSelectTab }: { activeTab: Tab; onSelectTab: (tab: Tab) => void }) {
+  const steps = [
+    { num: 1, title: 'Multi-Source Data', desc: 'X, Telegram, IG, FB, RSS', tab: 'overview' as Tab },
+    { num: 2, title: 'Continuous Collection', desc: 'Real-time & Chronology', tab: 'timeline' as Tab },
+    { num: 3, title: 'AI/NLP Enrichment', desc: 'Emotions, Stances, Entities', tab: 'posts' as Tab },
+    { num: 4, title: 'Core Analytics (B-E)', desc: 'Sentiment, Demographics, Trends, Network', tab: 'trends' as Tab },
+    { num: 5, title: 'Evidence Console', desc: 'Explainable Alerts & Provenance', tab: 'evidence' as Tab },
+  ];
+  return (
+    <div className="sih-pipeline-banner">
+      <div className="sih-pipeline-title">
+        <Sparkles size={13} />
+        <span>SIH26152 End-to-End Social Media Analytics Pipeline</span>
+      </div>
+      <div className="sih-pipeline-steps">
+        {steps.map((step, idx) => (
+          <div key={step.num} style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 150 }}>
+            <div
+              className={`sih-step ${activeTab === step.tab ? 'active' : ''}`}
+              onClick={() => onSelectTab(step.tab)}
+              style={{ cursor: 'pointer' }}
+              title={`Switch to ${step.title}`}
+            >
+              <div className="sih-step-num">{step.num}</div>
+              <div>
+                <strong>{step.title}</strong>
+                <span>{step.desc}</span>
+              </div>
+            </div>
+            {idx < steps.length - 1 && <span className="sih-arrow">→</span>}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function TrendingKeywordsRibbon({ keywords }: { keywords?: TrendingKeyword[] }) {
+  if (!keywords || !keywords.length) return null;
+  return (
+    <div className="trending-keywords-panel">
+      <div className="trending-keywords-head">
+        <div className="eyebrow" style={{ color: '#93c5fd' }}>SIH Component D · Emerging Topic & Keyword Clusters</div>
+        <Badge tone="good">{keywords.length} active keyword signals</Badge>
+      </div>
+      <div className="trending-keywords-cloud">
+        {keywords.map((kw) => (
+          <div className="trending-keyword-pill" key={kw.term}>
+            <strong>{kw.term}</strong>
+            <span className="trending-keyword-count">{kw.count} posts</span>
+            <span className={`trending-keyword-growth ${kw.growth_rate >= 0 ? 'positive' : 'negative'}`}>
+              {kw.growth_rate >= 0 ? '+' : ''}{(kw.growth_rate * 100).toFixed(0)}%
+            </span>
+            <span style={{ fontSize: 9.5, color: '#64748b' }}>
+              {kw.platforms.length} {kw.platforms.length === 1 ? 'platform' : 'platforms'}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function TimelineView({
+  points,
+  minutes,
+  onMinutesChange,
+}: {
+  points: TimelinePoint[];
+  minutes: number;
+  onMinutesChange: (m: number) => void;
+}) {
+  const [viewMode, setViewMode] = useState<'polarity' | 'emotions' | 'stance'>('polarity');
+
+  const data = points.map((point) => {
+    const d = new Date(point.time);
+    const time = Number.isNaN(d.getTime())
+      ? String(point.time)
+      : d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    return {
+      time,
+      count: point.count,
+      negative: point.sentiments?.negative || 0,
+      positive: point.sentiments?.positive || 0,
+      neutral: point.sentiments?.neutral || 0,
+      anxiety: point.emotions?.anxiety || 0,
+      excitement: point.emotions?.excitement || 0,
+      anger: point.emotions?.anger || 0,
+      sadness: point.emotions?.sadness || 0,
+      supportive: point.stances?.supportive || 0,
+      against: point.stances?.against || 0,
+      unclear: point.stances?.unclear || 0,
+    };
+  });
+
   return (
     <section className="panel panel-large">
       <div className="section-head">
-        <div><div className="eyebrow">Chronology</div><h2>Conversation timeline</h2></div>
-        <div className="legend"><span>Volume</span><span>Negative</span><span>Positive</span></div>
+        <div>
+          <div className="eyebrow">SIH Components A & B · Exact Chronology & Sentiment Timeline</div>
+          <h2>Conversation timeline & sentiment movement</h2>
+        </div>
+        <div className="legend">
+          {viewMode === 'polarity' && (
+            <>
+              <span style={{ color: '#60a5fa' }}>● Volume</span>
+              <span style={{ color: '#f87171' }}>● Negative</span>
+              <span style={{ color: '#34d399' }}>● Positive</span>
+              <span style={{ color: '#94a3b8' }}>- - Neutral</span>
+            </>
+          )}
+          {viewMode === 'emotions' && (
+            <>
+              <span style={{ color: '#f59e0b' }}>● Anxiety</span>
+              <span style={{ color: '#ef4444' }}>● Anger</span>
+              <span style={{ color: '#38bdf8' }}>● Excitement</span>
+              <span style={{ color: '#a855f7' }}>● Sadness</span>
+            </>
+          )}
+          {viewMode === 'stance' && (
+            <>
+              <span style={{ color: '#10b981' }}>● Supportive</span>
+              <span style={{ color: '#f43f5e' }}>● Against</span>
+              <span style={{ color: '#64748b' }}>- - Unclear</span>
+            </>
+          )}
+        </div>
       </div>
+
+      <div className="timeline-toolbar">
+        <div className="timeline-toggle-group">
+          <button
+            type="button"
+            className={`timeline-toggle-btn ${viewMode === 'polarity' ? 'active' : ''}`}
+            onClick={() => setViewMode('polarity')}
+          >
+            Sentiment Polarity
+          </button>
+          <button
+            type="button"
+            className={`timeline-toggle-btn ${viewMode === 'emotions' ? 'active' : ''}`}
+            onClick={() => setViewMode('emotions')}
+          >
+            Nuanced Emotions
+          </button>
+          <button
+            type="button"
+            className={`timeline-toggle-btn ${viewMode === 'stance' ? 'active' : ''}`}
+            onClick={() => setViewMode('stance')}
+          >
+            Stance Movement
+          </button>
+        </div>
+
+        <div className="timeline-interval-group">
+          <span style={{ fontSize: 10, color: '#64748b', marginRight: 4 }}>Bucket Resolution:</span>
+          {[15, 30, 60, 180].map((m) => (
+            <button
+              key={m}
+              type="button"
+              className={`timeline-interval-btn ${minutes === m ? 'active' : ''}`}
+              onClick={() => onMinutesChange(m)}
+            >
+              {m >= 60 ? `${m / 60}h` : `${m}m`}
+            </button>
+          ))}
+        </div>
+      </div>
+
       <div className="chart-wrap">
         <ResponsiveContainer width="100%" height={380}>
           <AreaChart data={data} margin={{ left: 0, right: 16, top: 12, bottom: 0 }}>
             <CartesianGrid strokeDasharray="3 3" opacity={0.15} />
             <XAxis dataKey="time" tick={{ fontSize: 11, fill: '#64748b' }} />
             <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: '#64748b' }} />
-            <Tooltip contentStyle={{ background: '#091120', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, fontSize: 11 }} />
-            <Area type="monotone" dataKey="count" stroke="#60a5fa" fill="#3b82f6" fillOpacity={0.12} strokeWidth={2.5} />
-            <Line type="monotone" dataKey="negative" stroke="#f87171" strokeWidth={1.75} dot={false} />
-            <Line type="monotone" dataKey="positive" stroke="#34d399" strokeWidth={1.75} dot={false} />
+            <Tooltip
+              contentStyle={{
+                background: '#091120',
+                border: '1px solid rgba(255,255,255,0.1)',
+                borderRadius: 8,
+                fontSize: 11,
+              }}
+            />
+            {viewMode === 'polarity' && (
+              <>
+                <Area type="monotone" dataKey="count" stroke="#60a5fa" fill="#3b82f6" fillOpacity={0.12} strokeWidth={2.5} name="Total Volume" />
+                <Line type="monotone" dataKey="negative" stroke="#f87171" strokeWidth={1.75} dot={false} name="Negative" />
+                <Line type="monotone" dataKey="positive" stroke="#34d399" strokeWidth={1.75} dot={false} name="Positive" />
+                <Line type="monotone" dataKey="neutral" stroke="#94a3b8" strokeWidth={1.5} strokeDasharray="3 3" dot={false} name="Neutral" />
+              </>
+            )}
+            {viewMode === 'emotions' && (
+              <>
+                <Line type="monotone" dataKey="anxiety" stroke="#f59e0b" strokeWidth={2} dot={{ r: 3 }} name="Anxiety" />
+                <Line type="monotone" dataKey="anger" stroke="#ef4444" strokeWidth={2} dot={{ r: 3 }} name="Anger" />
+                <Line type="monotone" dataKey="excitement" stroke="#38bdf8" strokeWidth={2} dot={{ r: 3 }} name="Excitement" />
+                <Line type="monotone" dataKey="sadness" stroke="#a855f7" strokeWidth={2} dot={{ r: 3 }} name="Sadness" />
+              </>
+            )}
+            {viewMode === 'stance' && (
+              <>
+                <Line type="monotone" dataKey="supportive" stroke="#10b981" strokeWidth={2} dot={{ r: 3 }} name="Supportive" />
+                <Line type="monotone" dataKey="against" stroke="#f43f5e" strokeWidth={2} dot={{ r: 3 }} name="Against" />
+                <Line type="monotone" dataKey="unclear" stroke="#64748b" strokeWidth={1.5} strokeDasharray="3 3" dot={false} name="Unclear" />
+              </>
+            )}
           </AreaChart>
         </ResponsiveContainer>
       </div>
-      <div className="coverage-callout"><ShieldCheck size={16} /> Exact source timestamps are stored separately from ingestion time.</div>
+      <div className="coverage-callout">
+        <ShieldCheck size={16} /> Exact source timestamps are preserved separately from ingestion time. Multi-dimensional emotion & stance tracking satisfies SIH Component B.
+      </div>
     </section>
   );
 }
 
 function NetworkGraph({ network }: { network: NetworkResponse | null }) {
-  const nodes = (network?.nodes || []).slice(0, 32);
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+
+  const nodes = (network?.nodes || []).slice(0, 36);
   const ids = new Set(nodes.map((n) => n.id));
-  const edges = (network?.edges || []).filter((edge) => ids.has(edge.source) && ids.has(edge.target)).slice(0, 90);
+  const edges = (network?.edges || []).filter((edge) => ids.has(edge.source) && ids.has(edge.target)).slice(0, 100);
   const width = 900;
   const height = 500;
   const centerX = width / 2;
@@ -210,40 +397,170 @@ function NetworkGraph({ network }: { network: NetworkResponse | null }) {
     positions.set(node.id, { x: centerX + Math.cos(angle) * r, y: centerY + Math.sin(angle) * r });
   });
 
+  const selectedNode = useMemo(() => {
+    if (!selectedNodeId) return nodes[0] || null;
+    return nodes.find((n) => n.id === selectedNodeId) || nodes[0] || null;
+  }, [nodes, selectedNodeId]);
+
   if (!network || !nodes.length) return <div className="empty">No network data yet. Seed or ingest events first.</div>;
 
   return (
-    <div className="network-layout">
-      <div className="network-canvas">
-        <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Observed interaction network">
-          {edges.map((edge, index) => {
-            const a = positions.get(edge.source);
-            const b = positions.get(edge.target);
-            if (!a || !b) return null;
-            return <line key={`${edge.source}-${edge.target}-${index}`} x1={a.x} y1={a.y} x2={b.x} y2={b.y} className="network-edge" strokeWidth={Math.min(3, 0.7 + edge.weight)} />;
-          })}
-          {nodes.map((node) => {
-            const p = positions.get(node.id)!;
-            const size = 6 + Math.min(10, node.pagerank * 90);
-            return (
-              <g key={node.id} className="network-node">
-                <circle cx={p.x} cy={p.y} r={size} className={`network-dot role-${node.role.replaceAll(' ', '-').toLowerCase()}`} />
-                <text x={p.x + size + 4} y={p.y + 4}>{node.label.slice(0, 18)}</text>
-              </g>
-            );
-          })}
-        </svg>
-      </div>
-      <div className="network-rank">
-        <div className="eyebrow">Observed graph</div>
-        <h3>Influence & bridge nodes</h3>
-        {nodes.slice(0, 8).map((node: GraphNode) => (
-          <div className="rank-row" key={node.id}>
-            <div><strong>{node.label}</strong><span>{node.explanation}</span></div>
-            <Badge tone={node.role === 'Bridge Node' ? 'warn' : node.role === 'High Reach Node' ? 'good' : 'neutral'}>{node.role}</Badge>
+    <div>
+      <div className="network-layout">
+        <div className="network-canvas">
+          <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Observed interaction network">
+            {edges.map((edge, index) => {
+              const a = positions.get(edge.source);
+              const b = positions.get(edge.target);
+              if (!a || !b) return null;
+              const isRepost = edge.types?.includes('repost') || edge.types?.includes('quote');
+              return (
+                <line
+                  key={`${edge.source}-${edge.target}-${index}`}
+                  x1={a.x}
+                  y1={a.y}
+                  x2={b.x}
+                  y2={b.y}
+                  className="network-edge"
+                  strokeDasharray={isRepost ? '4 3' : undefined}
+                  stroke={isRepost ? '#a855f7' : '#334155'}
+                  strokeWidth={Math.min(3.5, 0.7 + edge.weight)}
+                />
+              );
+            })}
+            {nodes.map((node) => {
+              const p = positions.get(node.id)!;
+              const size = 6 + Math.min(10, node.pagerank * 90);
+              const isSelected = selectedNode?.id === node.id;
+              return (
+                <g
+                  key={node.id}
+                  className="network-node"
+                  style={{ cursor: 'pointer' }}
+                  onClick={() => setSelectedNodeId(node.id)}
+                >
+                  <circle
+                    cx={p.x}
+                    cy={p.y}
+                    r={isSelected ? size + 3 : size}
+                    className={`network-dot role-${node.role.replaceAll(' ', '-').toLowerCase()}`}
+                    stroke={isSelected ? '#60a5fa' : undefined}
+                    strokeWidth={isSelected ? 2.5 : undefined}
+                  />
+                  <text x={p.x + size + 4} y={p.y + 4} fill={isSelected ? '#93c5fd' : undefined} fontWeight={isSelected ? 700 : undefined}>
+                    {node.label.slice(0, 18)}
+                  </text>
+                </g>
+              );
+            })}
+          </svg>
+          <div style={{ display: 'flex', gap: 16, marginTop: 8, fontSize: 11, color: '#94a3b8' }}>
+            <span><strong style={{ color: '#334155' }}>—</strong> Reply/Mention Edge</span>
+            <span><strong style={{ color: '#a855f7' }}>- - -</strong> Repost/Quote Edge (SIH E)</span>
           </div>
-        ))}
+        </div>
+
+        <div className="network-rank">
+          <div className="eyebrow">Observed graph & centrality</div>
+          <h3>Influence & bridge nodes</h3>
+
+          {selectedNode && (
+            <div className="network-community-card" style={{ marginBottom: 12, borderColor: 'rgba(59, 130, 246, 0.4)', background: '#0a1426' }}>
+              <div className="network-community-head">
+                <strong>{selectedNode.label}</strong>
+                <Badge tone={selectedNode.role === 'Bridge Node' ? 'warn' : selectedNode.role === 'High Reach Node' ? 'good' : 'neutral'}>
+                  {selectedNode.role}
+                </Badge>
+              </div>
+              <p style={{ fontSize: 11, color: '#94a3b8', margin: '4px 0' }}>{selectedNode.explanation}</p>
+              <div className="network-metrics-strip">
+                <div>
+                  <span>PageRank</span>
+                  <strong>{selectedNode.pagerank.toFixed(4)}</strong>
+                </div>
+                <div>
+                  <span>Betweenness</span>
+                  <strong>{(selectedNode.betweenness ?? 0).toFixed(4)}</strong>
+                </div>
+                <div>
+                  <span>Degree Cent.</span>
+                  <strong>{(selectedNode.degree_centrality ?? 0).toFixed(4)}</strong>
+                </div>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 8, fontSize: 10, color: '#64748b' }}>
+                <span>Community #{selectedNode.community}</span>
+                {selectedNode.sentiment && <span className="chip">sentiment: {selectedNode.sentiment}</span>}
+              </div>
+            </div>
+          )}
+
+          <div style={{ maxHeight: 220, overflowY: 'auto' }}>
+            {nodes.slice(0, 10).map((node: GraphNode) => (
+              <div
+                className="rank-row"
+                key={node.id}
+                style={{ cursor: 'pointer', background: selectedNode?.id === node.id ? 'rgba(59, 130, 246, 0.1)' : undefined }}
+                onClick={() => setSelectedNodeId(node.id)}
+              >
+                <div>
+                  <strong>{node.label}</strong>
+                  <span>PR: {node.pagerank.toFixed(3)} · Betw: {(node.betweenness ?? 0).toFixed(3)}</span>
+                </div>
+                <Badge tone={node.role === 'Bridge Node' ? 'warn' : node.role === 'High Reach Node' ? 'good' : 'neutral'}>
+                  {node.role}
+                </Badge>
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
+
+      {/* TEMPORAL PROPAGATION FLOW */}
+      {network.temporal_propagation && network.temporal_propagation.length > 0 && (
+        <div className="network-temporal-panel">
+          <div className="eyebrow" style={{ color: '#93c5fd', marginBottom: 8 }}>
+            SIH Component E · Temporal Narrative Propagation Flow
+          </div>
+          {network.temporal_propagation.map((stage) => (
+            <div className="network-step-row" key={stage.step}>
+              <span className="network-step-badge">{stage.step}</span>
+              <div className="network-step-copy">
+                <strong>Stage {stage.step}: Community #{stage.community_id} (led by {stage.lead_node})</strong>
+                <span>{stage.summary} · {stage.node_count} nodes · sentiment: {stage.dominant_sentiment}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* COMMUNITY SENTIMENT BREAKDOWN */}
+      {network.communities_detail && network.communities_detail.length > 0 && (
+        <div style={{ marginTop: 18 }}>
+          <div className="eyebrow" style={{ color: '#93c5fd', marginBottom: 6 }}>
+            SIH Component E · Community Sentiment Breakdown
+          </div>
+          <div className="network-communities-grid">
+            {network.communities_detail.map((c) => (
+              <div className="network-community-card" key={c.community_id}>
+                <div className="network-community-head">
+                  <strong>Community #{c.community_id} ({c.node_count} nodes, {c.event_count} events)</strong>
+                  <Badge tone={c.dominant_sentiment === 'negative' ? 'bad' : c.dominant_sentiment === 'positive' ? 'good' : 'neutral'}>
+                    {c.dominant_sentiment}
+                  </Badge>
+                </div>
+                <div style={{ fontSize: 10.5, color: '#94a3b8' }}>
+                  Lead node: {c.lead_node || 'None'} · Earliest: {fmt(c.earliest_seen)}
+                </div>
+                <div className="chip-row" style={{ marginTop: 8 }}>
+                  {Object.entries(c.sentiment_mix).map(([sent, cnt]) => (
+                    <span className="chip" key={sent}>{sent}: {String(cnt)}</span>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -344,6 +661,7 @@ function App({ onNavigateHome }: { onNavigateHome?: () => void } = {}) {
   const [events, setEvents] = useState<SocialEvent[]>([]);
   const [postDateFilter, setPostDateFilter] = useState<Date | undefined>(undefined);
   const [collector, setCollector] = useState<CollectorStatus | null>(null);
+  const [timelineMinutes, setTimelineMinutes] = useState(15);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -353,7 +671,7 @@ function App({ onNavigateHome }: { onNavigateHome?: () => void } = {}) {
     try {
       setError(null);
       const [status, overviewData, timeData, narrativeData, networkData, demographicData, alertData, eventData, collectorData] = await Promise.all([
-        api.connectorStatus(), api.overview(), api.timeline(), api.narratives(), api.network(), api.demographics(), api.alerts(), api.events(), api.collectorStatus(),
+        api.connectorStatus(), api.overview(), api.timeline(timelineMinutes), api.narratives(), api.network(), api.demographics(), api.alerts(), api.events(), api.collectorStatus(),
       ]);
       setConnectors(status.connectors);
       setOverview(overviewData);
@@ -377,7 +695,17 @@ function App({ onNavigateHome }: { onNavigateHome?: () => void } = {}) {
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Unable to reach NEXUS backend.');
     }
-  }, [selectedNarrativeId]);
+  }, [selectedNarrativeId, timelineMinutes]);
+
+  const handleTimelineMinutesChange = async (minutes: number) => {
+    setTimelineMinutes(minutes);
+    try {
+      const timeData = await api.timeline(minutes);
+      setTimelinePoints(timeData.points);
+    } catch {
+      // ignore
+    }
+  };
 
   useEffect(() => { void loadAll(); }, []);
 
@@ -609,6 +937,9 @@ function App({ onNavigateHome }: { onNavigateHome?: () => void } = {}) {
 
         <main className="content">
           {loading && <div className="loading-line"><span /></div>}
+
+          {/* SIH26152 END-TO-END PIPELINE BANNER */}
+          <SIHPipelineBanner activeTab={tab} onSelectTab={setTab} />
 
           {/* OVERVIEW TAB */}
           {tab === 'overview' && (
@@ -847,12 +1178,16 @@ function App({ onNavigateHome }: { onNavigateHome?: () => void } = {}) {
             >
               <div className="page-head">
                 <div>
-                  <div className="eyebrow">Exact chronology</div>
+                  <div className="eyebrow">SIH Components A & B · Exact Chronology & Sentiment Timeline</div>
                   <h1>Timeline & sentiment movement</h1>
-                  <p>See when volume changes and whether emotion shifts with it.</p>
+                  <p>Track post volume, nuanced emotions (anxiety, excitement, anger, sadness) and supportive/against stances over selectable time windows.</p>
                 </div>
               </div>
-              <TimelineView points={timelinePoints} />
+              <TimelineView
+                points={timelinePoints}
+                minutes={timelineMinutes}
+                onMinutesChange={handleTimelineMinutesChange}
+              />
             </motion.div>
           )}
 
@@ -866,11 +1201,15 @@ function App({ onNavigateHome }: { onNavigateHome?: () => void } = {}) {
             >
               <div className="page-head">
                 <div>
-                  <div className="eyebrow">Real-time trend engine</div>
-                  <h1>Emerging narratives</h1>
-                  <p>Ranked using growth, burst, diversity, cross-platform presence, engagement and recency.</p>
+                  <div className="eyebrow">SIH Component D · Real-time Trend Engine</div>
+                  <h1>Emerging narratives & keyword clusters</h1>
+                  <p>Ranked using frequency, growth rate, cross-platform spread, burst velocity, and author diversity.</p>
                 </div>
               </div>
+
+              {/* SIH D: Ranked Workspace-wide Trending Keywords Ribbon */}
+              <TrendingKeywordsRibbon keywords={overview?.trending_keywords} />
+
               <div className="trend-list standalone">
                 {narratives.map((n) => (
                   <TrendCard key={n.id} narrative={n} onOpen={() => void openNarrative(n.id)} />
@@ -908,9 +1247,9 @@ function App({ onNavigateHome }: { onNavigateHome?: () => void } = {}) {
             >
               <div className="page-head">
                 <div>
-                  <div className="eyebrow">Link analysis</div>
+                  <div className="eyebrow">SIH Component E · Link Analysis & Temporal Propagation</div>
                   <h1>How influence moved</h1>
-                  <p>Centrality and bridge roles describe observed network position — never guilt or intent.</p>
+                  <p>Exact centrality metrics (PageRank, Betweenness, Degree), community sentiment, and temporal propagation across stages.</p>
                 </div>
                 <div className="chip-row">
                   <span className="chip">nodes {network?.summary.nodes || 0}</span>
@@ -934,17 +1273,27 @@ function App({ onNavigateHome }: { onNavigateHome?: () => void } = {}) {
             >
               <div className="page-head">
                 <div>
-                  <div className="eyebrow">Aggregate only</div>
+                  <div className="eyebrow">SIH Component C · Privacy-Safe Aggregate Inference</div>
                   <h1>Audience signals without individual profiling</h1>
                   <p>{demographics.privacy_note}</p>
                 </div>
-                <Badge tone="good"><ShieldCheck size={13} /> k-anonymity guard</Badge>
+                <Badge tone="good"><ShieldCheck size={13} /> k-anonymity guard (k=10)</Badge>
               </div>
+
+              <div className="coverage-callout" style={{ marginBottom: 16 }}>
+                <ShieldCheck size={16} />
+                <span>
+                  <strong>Ethical Inference Guarantee:</strong> NEXUS adheres strictly to public-signal aggregate profiling.
+                  Inferences are derived from public metadata (bio keywords, public location strings, language detectors) and protected under k-anonymity (k=10).
+                  No PII, private messages, or micro-targeted tracking is stored or exposed.
+                </span>
+              </div>
+
               <div className="demographic-grid">
-                <DemographicSliceCard title="Language" slice={demographics.language} />
-                <DemographicSliceCard title="Broad geography" slice={demographics.broad_geography} />
-                <DemographicSliceCard title="Professional interests" slice={demographics.professional_interests} />
-                <DemographicSliceCard title="Age brackets" slice={demographics.age_brackets} />
+                <DemographicSliceCard title="Language Distribution" slice={demographics.language} />
+                <DemographicSliceCard title="Broad Geographic Regions" slice={demographics.broad_geography} />
+                <DemographicSliceCard title="Professional / Domain Interests" slice={demographics.professional_interests} />
+                <DemographicSliceCard title="Inferred Age Brackets" slice={demographics.age_brackets} />
               </div>
             </motion.div>
           )}
