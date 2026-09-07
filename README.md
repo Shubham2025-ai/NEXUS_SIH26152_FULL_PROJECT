@@ -2,6 +2,12 @@
 
 **Smart India Hackathon 2026 · SIH26152 · Social Media Analytics · NTRO**
 
+[![Live Demo on Vercel](https://img.shields.io/badge/Vercel-Live%20Demo-black?logo=vercel)](https://frontend-six-wine-24.vercel.app)
+[![GitHub Repository](https://img.shields.io/badge/GitHub-NEXUS__SIH26152__FULL__PROJECT-blue?logo=github)](https://github.com/Shubham2025-ai/NEXUS_SIH26152_FULL_PROJECT)
+[![CI](https://github.com/Shubham2025-ai/NEXUS_SIH26152_FULL_PROJECT/actions/workflows/ci.yml/badge.svg)](https://github.com/Shubham2025-ai/NEXUS_SIH26152_FULL_PROJECT/actions/workflows/ci.yml)
+
+🌐 **Live Deployed Web Console**: [https://frontend-six-wine-24.vercel.app](https://frontend-six-wine-24.vercel.app)
+
 > **We track how narratives emerge, mutate and move — then keep the evidence that proves every conclusion.**
 
 NEXUS is a free-first, evidence-backed cross-platform social-media analytics framework built for SIH26152. It normalizes public/authorized social data into one chronology and implements the four required analytical vectors:

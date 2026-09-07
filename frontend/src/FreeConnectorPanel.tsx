@@ -1,20 +1,17 @@
-import { type CSSProperties, useState } from 'react';
-import { BadgeCheck, Radio, ShieldCheck, Wifi, X as CloseIcon } from 'lucide-react';
+import { useState } from 'react';
+import {
+  BadgeCheck,
+  Radio,
+  ShieldCheck,
+  Wifi,
+  X as CloseIcon,
+  Search,
+  AtSign,
+  Loader2,
+} from 'lucide-react';
 import { API_BASE } from './api';
 
 type ActionName = 'telegram' | 'youtube' | 'bluesky' | 'reddit' | 'mastodon' | 'instagram' | 'instagramTag' | 'x' | 'mix' | 'verify';
-
-const buttonStyle: CSSProperties = {
-  border: '1px solid rgba(130,155,210,.28)', background: 'rgba(15,23,42,.84)', color: '#e9f0ff', borderRadius: 10,
-  padding: '8px 11px', cursor: 'pointer', fontSize: 12, fontWeight: 700,
-};
-const primaryButtonStyle: CSSProperties = {
-  ...buttonStyle, border: '1px solid rgba(101,199,255,.55)', background: 'linear-gradient(135deg,rgba(32,99,194,.95),rgba(73,65,196,.95))',
-};
-const inputStyle: CSSProperties = {
-  minWidth: 180, flex: 1, border: '1px solid rgba(130,155,210,.28)', background: '#0b1220', color: '#eef4ff', borderRadius: 10,
-  padding: '9px 11px', outline: 'none',
-};
 
 const X_POST_RE = /https?:\/\/(?:www\.)?(?:x\.com|twitter\.com)\/[A-Za-z0-9_]+\/status\/\d+/i;
 
@@ -66,9 +63,6 @@ export default function FreeConnectorPanel() {
       const targetIsX = X_POST_RE.test(rawTarget);
       const cleanTarget = rawTarget.replace(/^@/, '');
 
-      // Fresh workspace search always tries the zero-cost sources. When no
-      // Telegram target is supplied, the backend automatically uses
-      // TELEGRAM_PUBLIC_CHANNELS from .env and locally filters those posts by query.
       const result = await post('/api/search/workspace', {
         query: query.trim(),
         reset: true,
@@ -86,8 +80,6 @@ export default function FreeConnectorPanel() {
       const ok = sourceEntries.filter(([, status]) => status?.state === 'OK').map(([name]) => name);
       const unavailable = sourceEntries.filter(([, status]) => status?.state !== 'OK').map(([name]) => name);
 
-      // If the target box contains one or more public X Post URLs, append them
-      // immediately using X's official unauthenticated oEmbed endpoint.
       if (targetIsX) {
         try {
           const xResult = await post('/api/connectors/x/public', { query: '', target: rawTarget, limit: 25 });
@@ -122,36 +114,201 @@ export default function FreeConnectorPanel() {
   };
 
   if (collapsed) {
-    return <button onClick={() => setCollapsed(false)} style={{ ...buttonStyle, position: 'fixed', right: 16, bottom: 16, zIndex: 50, boxShadow: '0 14px 40px rgba(0,0,0,.35)' }} title="Open free/public connector controls"><Wifi size={14} style={{ verticalAlign: 'middle', marginRight: 6 }} /> FREE SOURCES</button>;
+    return (
+      <button
+        onClick={() => setCollapsed(false)}
+        className="fsl-floating-trigger"
+        title="Open Free Source Lab controls"
+      >
+        <Wifi size={13} />
+        <span>FREE SOURCES</span>
+      </button>
+    );
   }
 
   const cleanHashtag = query.trim().replace(/^#/, '');
   const targetLooksX = X_POST_RE.test(target.trim());
 
   return (
-    <section style={{ position: 'relative', zIndex: 40, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, padding: '10px 16px', background: 'linear-gradient(90deg,#07101f,#0c1730)', color: '#eaf1ff', borderBottom: '1px solid rgba(120,150,210,.22)', fontFamily: 'Inter,system-ui,sans-serif' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginRight: 5 }}><Radio size={15} /><strong style={{ fontSize: 12, letterSpacing: '.08em' }}>FREE SOURCE LAB</strong><span style={{ fontSize: 11, opacity: .65 }}>Fresh Mix = new topic · source buttons append</span></div>
-      <input style={inputStyle} value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') void runMix(); }} placeholder="topic / #hashtag / search query" />
-      <input
-        style={{ ...inputStyle, maxWidth: 320 }}
-        value={target}
-        onChange={(e) => setTarget(e.target.value)}
-        placeholder="Telegram/IG target OR public X Post URL(s)"
-        title="Use a Telegram channel username, Instagram public username, or one/more public X Post URLs."
-      />
-      <button style={primaryButtonStyle} disabled={!!busy || !query.trim()} onClick={() => void runMix()}><Wifi size={13} style={{ verticalAlign: 'middle', marginRight: 5 }} />Fresh Free Mix</button>
-      <button style={buttonStyle} disabled={!!busy || !target.trim() || targetLooksX} onClick={() => run('telegram', () => post('/api/connectors/telegram/public', { channel: `${target.trim().replace(/^@/, '')}||${query.trim()}`, limit: 25 }))}>+ Telegram Search</button>
-      <button style={buttonStyle} disabled={!!busy || !query.trim()} onClick={() => run('youtube', () => post('/api/connectors/youtube/free', { query: query.trim(), limit: 10 }))}>+ YouTube ₹0</button>
-      <button style={buttonStyle} disabled={!!busy || !query.trim()} onClick={() => run('bluesky', () => post('/api/connectors/bluesky/search', { query: query.trim(), limit: 25 }))}>+ Bluesky</button>
-      <button style={buttonStyle} disabled={!!busy || !query.trim()} onClick={() => run('reddit', () => post('/api/connectors/reddit/search', { query: query.trim(), limit: 25 }))}>+ Reddit</button>
-      <button style={buttonStyle} disabled={!!busy || !query.trim()} onClick={() => run('mastodon', () => post('/api/connectors/mastodon/search', { query: query.trim(), limit: 25, base_url: null }))}>+ Mastodon</button>
-      <button style={buttonStyle} disabled={!!busy || !cleanHashtag || cleanHashtag.includes(' ')} onClick={() => run('instagramTag', () => post('/api/connectors/instagram/hashtag', { hashtag: cleanHashtag, limit: 20 }))}>+ IG Hashtag API</button>
-      <button style={buttonStyle} disabled={!!busy || !target.trim() || targetLooksX || target.trim().replace(/^@/, '').length > 30} onClick={() => run('instagram', () => post('/api/connectors/instagram/public', { profile: target.trim().replace(/^@/, ''), limit: 12 }))}>+ Instagram Public</button>
-      <button style={buttonStyle} disabled={!!busy || (!query.trim() && !target.trim())} onClick={() => run('x', () => post('/api/connectors/x/public', { query: query.trim(), target: target.trim(), limit: 25 }))}>+ X URL / Bridge</button>
-      <button style={buttonStyle} disabled={!!busy} onClick={() => void verifyEvidence()}><BadgeCheck size={13} style={{ verticalAlign: 'middle', marginRight: 5 }} />Verify Evidence</button>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, opacity: .75 }} title="No connector may label replay/import as live."><ShieldCheck size={13} /> truthful source modes</div>
-      {message && <span style={{ fontSize: 11, maxWidth: 620, color: messageGood ? '#7be0b3' : '#ffb0b7' }}>{message}</span>}
-      <button aria-label="Collapse free connector controls" onClick={() => setCollapsed(true)} style={{ ...buttonStyle, padding: 7, marginLeft: 'auto' }}><CloseIcon size={13} /></button>
+    <section className="free-source-panel">
+      <div className="fsl-container">
+        {/* Section 1: Brand & Query Inputs */}
+        <div className="fsl-input-cluster">
+          <div className="fsl-title-group">
+            <Radio size={14} className="text-cyan-400 shrink-0" />
+            <strong className="fsl-title">FREE SOURCE LAB</strong>
+          </div>
+
+          <div className="fsl-field">
+            <Search size={13} className="text-slate-500 shrink-0 ml-2" />
+            <input
+              className="fsl-input"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') void runMix(); }}
+              placeholder="Topic / #hashtag"
+              title="Search query or topic hashtag"
+            />
+          </div>
+
+          <div className="fsl-field fsl-field-target">
+            <AtSign size={13} className="text-slate-500 shrink-0 ml-2" />
+            <input
+              className="fsl-input"
+              value={target}
+              onChange={(e) => setTarget(e.target.value)}
+              placeholder="TG channel, IG user, or X URL"
+              title="Use a Telegram channel username, Instagram public username, or public X Post URL."
+            />
+          </div>
+        </div>
+
+        {/* Section 2: Primary Mix Button */}
+        <div className="fsl-primary-action">
+          <button
+            type="button"
+            className="fsl-btn fsl-btn-primary"
+            disabled={!!busy || !query.trim()}
+            onClick={() => void runMix()}
+            title="Create a fresh multi-source search workspace"
+          >
+            {busy === 'mix' ? (
+              <Loader2 size={13} className="animate-spin" />
+            ) : (
+              <Wifi size={13} />
+            )}
+            <span>Fresh Free Mix</span>
+          </button>
+        </div>
+
+        {/* Section 3: Segmented Public Search Engines */}
+        <div className="fsl-group">
+          <span className="fsl-group-label">Engines:</span>
+          <div className="fsl-btn-row">
+            <button
+              type="button"
+              className="fsl-btn fsl-btn-subtle"
+              disabled={!!busy || !query.trim()}
+              onClick={() => run('youtube', () => post('/api/connectors/youtube/free', { query: query.trim(), limit: 10 }))}
+              title="Append YouTube public video metadata (Zero-key)"
+            >
+              {busy === 'youtube' ? <Loader2 size={11} className="animate-spin" /> : null}
+              + YouTube ₹0
+            </button>
+            <button
+              type="button"
+              className="fsl-btn fsl-btn-subtle"
+              disabled={!!busy || !query.trim()}
+              onClick={() => run('bluesky', () => post('/api/connectors/bluesky/search', { query: query.trim(), limit: 25 }))}
+              title="Append Bluesky public AT Protocol posts"
+            >
+              {busy === 'bluesky' ? <Loader2 size={11} className="animate-spin" /> : null}
+              + Bluesky
+            </button>
+            <button
+              type="button"
+              className="fsl-btn fsl-btn-subtle"
+              disabled={!!busy || !query.trim()}
+              onClick={() => run('reddit', () => post('/api/connectors/reddit/search', { query: query.trim(), limit: 25 }))}
+              title="Append Reddit public JSON posts"
+            >
+              {busy === 'reddit' ? <Loader2 size={11} className="animate-spin" /> : null}
+              + Reddit
+            </button>
+            <button
+              type="button"
+              className="fsl-btn fsl-btn-subtle"
+              disabled={!!busy || !query.trim()}
+              onClick={() => run('mastodon', () => post('/api/connectors/mastodon/search', { query: query.trim(), limit: 25, base_url: null }))}
+              title="Append Mastodon instance search results"
+            >
+              {busy === 'mastodon' ? <Loader2 size={11} className="animate-spin" /> : null}
+              + Mastodon
+            </button>
+          </div>
+        </div>
+
+        {/* Section 4: Targeted Direct Bridges */}
+        <div className="fsl-group">
+          <span className="fsl-group-label">Bridges:</span>
+          <div className="fsl-btn-row">
+            <button
+              type="button"
+              className="fsl-btn fsl-btn-subtle"
+              disabled={!!busy || !target.trim() || targetLooksX}
+              onClick={() => run('telegram', () => post('/api/connectors/telegram/public', { channel: `${target.trim().replace(/^@/, '')}||${query.trim()}`, limit: 25 }))}
+              title="Search targeted public Telegram channel"
+            >
+              {busy === 'telegram' ? <Loader2 size={11} className="animate-spin" /> : null}
+              + Telegram
+            </button>
+            <button
+              type="button"
+              className="fsl-btn fsl-btn-subtle"
+              disabled={!!busy || !target.trim() || targetLooksX || target.trim().replace(/^@/, '').length > 30}
+              onClick={() => run('instagram', () => post('/api/connectors/instagram/public', { profile: target.trim().replace(/^@/, ''), limit: 12 }))}
+              title="Fetch public Instagram profile preview"
+            >
+              {busy === 'instagram' ? <Loader2 size={11} className="animate-spin" /> : null}
+              + IG Profile
+            </button>
+            <button
+              type="button"
+              className="fsl-btn fsl-btn-subtle"
+              disabled={!!busy || !cleanHashtag || cleanHashtag.includes(' ')}
+              onClick={() => run('instagramTag', () => post('/api/connectors/instagram/hashtag', { hashtag: cleanHashtag, limit: 20 }))}
+              title="Fetch Instagram public hashtag feed"
+            >
+              {busy === 'instagramTag' ? <Loader2 size={11} className="animate-spin" /> : null}
+              + IG Tag
+            </button>
+            <button
+              type="button"
+              className="fsl-btn fsl-btn-subtle"
+              disabled={!!busy || (!query.trim() && !target.trim())}
+              onClick={() => run('x', () => post('/api/connectors/x/public', { query: query.trim(), target: target.trim(), limit: 25 }))}
+              title="Ingest public X Post URL or bridge feed"
+            >
+              {busy === 'x' ? <Loader2 size={11} className="animate-spin" /> : null}
+              + X Bridge
+            </button>
+          </div>
+        </div>
+
+        {/* Section 5: Verification & Controls */}
+        <div className="fsl-controls">
+          <button
+            type="button"
+            className="fsl-btn fsl-btn-verify"
+            disabled={!!busy}
+            onClick={() => void verifyEvidence()}
+            title="Inspect cryptographic certificates for active narratives"
+          >
+            {busy === 'verify' ? <Loader2 size={12} className="animate-spin" /> : <BadgeCheck size={12} />}
+            <span>Verify Evidence</span>
+          </button>
+          <span className="fsl-truth-tag" title="Truthful provenance: Replay/Import data is never falsely tagged as LIVE">
+            <ShieldCheck size={12} className="text-emerald-400" />
+            <span>Truthful modes</span>
+          </span>
+          <button
+            type="button"
+            aria-label="Collapse free connector controls"
+            onClick={() => setCollapsed(true)}
+            className="fsl-close-btn"
+            title="Hide Free Source Lab bar"
+          >
+            <CloseIcon size={13} />
+          </button>
+        </div>
+      </div>
+
+      {message && (
+        <div className={`fsl-feedback ${messageGood ? 'fsl-feedback-good' : 'fsl-feedback-warn'}`}>
+          <span>{message}</span>
+          <button type="button" onClick={() => setMessage('')} className="fsl-feedback-close">✕</button>
+        </div>
+      )}
     </section>
   );
 }

@@ -1,10 +1,20 @@
 import { useEffect, useMemo, useState } from 'react';
-import { CheckCircle2, ChevronDown, ChevronUp, CircleAlert, PlugZap, RefreshCw, ShieldCheck } from 'lucide-react';
+import {
+  CheckCircle2,
+  ChevronDown,
+  ChevronUp,
+  CircleAlert,
+  PlugZap,
+  RefreshCw,
+  ShieldCheck,
+} from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { api, type ConnectorStatus } from './api';
 
 type SourceMeta = {
   platform: string;
   label: string;
+  shortLabel: string;
   official: string;
   freePath: string;
   env: string[];
@@ -17,6 +27,7 @@ const SOURCES: SourceMeta[] = [
   {
     platform: 'telegram',
     label: 'Telegram',
+    shortLabel: 'TG',
     official: 'Bot API for authorized channel/chat updates',
     freePath: 'Monitored public-channel preview + local query filtering',
     env: ['TELEGRAM_PUBLIC_CHANNELS', 'TELEGRAM_BOT_TOKEN', 'TELEGRAM_ALLOWED_CHAT_IDS'],
@@ -27,6 +38,7 @@ const SOURCES: SourceMeta[] = [
   {
     platform: 'x',
     label: 'X / Twitter',
+    shortLabel: 'X',
     official: 'X API v2 recent search (pay-per-use)',
     freePath: 'Official public Post oEmbed by explicit URL; optional permitted RSS/Atom bridge',
     env: ['X_BEARER_TOKEN', 'X_PUBLIC_RSS_URL_TEMPLATE'],
@@ -37,6 +49,7 @@ const SOURCES: SourceMeta[] = [
   {
     platform: 'youtube',
     label: 'YouTube',
+    shortLabel: 'YT',
     official: 'YouTube Data API v3',
     freePath: 'yt-dlp public video metadata',
     env: ['YOUTUBE_API_KEY'],
@@ -47,6 +60,7 @@ const SOURCES: SourceMeta[] = [
   {
     platform: 'instagram',
     label: 'Instagram',
+    shortLabel: 'IG',
     official: 'Meta Graph API / approved hashtag access',
     freePath: 'Best-effort public-profile fallback or IMPORT',
     env: ['META_ACCESS_TOKEN', 'META_INSTAGRAM_ACCOUNT_ID'],
@@ -57,6 +71,7 @@ const SOURCES: SourceMeta[] = [
   {
     platform: 'facebook',
     label: 'Facebook',
+    shortLabel: 'FB',
     official: 'Meta Graph API for authorized Page',
     freePath: 'IMPORT / REPLAY',
     env: ['META_ACCESS_TOKEN', 'META_FACEBOOK_PAGE_ID'],
@@ -67,6 +82,7 @@ const SOURCES: SourceMeta[] = [
   {
     platform: 'bluesky',
     label: 'Bluesky',
+    shortLabel: 'BSKY',
     official: 'Public AT Protocol',
     freePath: 'Public search (zero-key)',
     env: [],
@@ -77,6 +93,7 @@ const SOURCES: SourceMeta[] = [
   {
     platform: 'reddit',
     label: 'Reddit',
+    shortLabel: 'RD',
     official: 'OAuth app access when needed',
     freePath: 'Low-volume public JSON where permitted',
     env: ['REDDIT_CLIENT_ID', 'REDDIT_CLIENT_SECRET'],
@@ -87,6 +104,7 @@ const SOURCES: SourceMeta[] = [
   {
     platform: 'mastodon',
     label: 'Mastodon',
+    shortLabel: 'MST',
     official: 'Instance API',
     freePath: 'Public instance search',
     env: ['MASTODON_BASE_URL'],
@@ -97,10 +115,10 @@ const SOURCES: SourceMeta[] = [
 ];
 
 const stateTone = (state: string) => {
-  if (state === 'READY' || state === 'LIVE') return '#6ee7b7';
+  if (state === 'READY' || state === 'LIVE') return '#34d399';
   if (state === 'CREDENTIALS_REQUIRED' || state === 'PERMISSION_REQUIRED' || state === 'NO_CREDITS') return '#fbbf24';
-  if (state === 'ERROR') return '#fb7185';
-  return '#93c5fd';
+  if (state === 'ERROR') return '#f87171';
+  return '#94a3b8';
 };
 
 export default function ConnectionCenter() {
@@ -131,55 +149,130 @@ export default function ConnectionCenter() {
   }).length;
 
   return (
-    <section style={{ background: '#07111f', borderBottom: '1px solid rgba(120,150,210,.2)', color: '#eaf1ff', fontFamily: 'Inter,system-ui,sans-serif' }}>
-      <div style={{ minHeight: 46, display: 'flex', alignItems: 'center', gap: 10, padding: '7px 16px' }}>
-        <PlugZap size={16} />
-        <strong style={{ fontSize: 12, letterSpacing: '.08em' }}>CONNECTION CENTER</strong>
-        <span style={{ fontSize: 11, opacity: .7 }}>{liveReady}/{SOURCES.length} official connector states ready/live · free fallbacks shown below</span>
-        <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11, opacity: .72 }}>
-          <ShieldCheck size={13} /> secrets stay in local .env
-        </span>
-        <button onClick={() => void refresh()} disabled={loading} title="Refresh connector status" style={{ border: '1px solid #2b3a52', background: '#0d1727', color: '#dbeafe', borderRadius: 8, padding: '6px 8px', cursor: 'pointer' }}>
-          <RefreshCw size={13} />
-        </button>
-        <button onClick={() => setOpen((value) => !value)} style={{ border: '1px solid #2b3a52', background: '#0d1727', color: '#dbeafe', borderRadius: 8, padding: '6px 9px', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-          {open ? <ChevronUp size={13} /> : <ChevronDown size={13} />} {open ? 'Hide' : 'Open'}
-        </button>
+    <div className="connection-center-bar">
+      <div className="cc-strip">
+        <div className="cc-brand">
+          <PlugZap size={14} className="text-blue-400 shrink-0" />
+          <strong className="cc-title">CONNECTION CENTER</strong>
+          <span className="cc-count-badge">{liveReady}/{SOURCES.length} Ready</span>
+        </div>
+
+        {/* Quick-Scan Platform Pills */}
+        <div className="cc-platform-cluster">
+          {SOURCES.map((source) => {
+            const state = byPlatform.get(source.platform)?.state || 'NOT_REPORTED';
+            const color = stateTone(state);
+            const isReady = state === 'READY' || state === 'LIVE';
+            return (
+              <div
+                key={source.platform}
+                className="cc-pill"
+                title={`${source.label}: ${state.replaceAll('_', ' ')} (${source.official})`}
+              >
+                <span
+                  className="cc-dot"
+                  style={{
+                    backgroundColor: color,
+                    boxShadow: isReady ? `0 0 6px ${color}88` : 'none',
+                  }}
+                />
+                <span className="cc-pill-name">{source.shortLabel}</span>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Right Actions */}
+        <div className="cc-actions">
+          <span className="cc-env-note" title="API keys and secrets are never sent to the browser">
+            <ShieldCheck size={12} className="text-emerald-400" />
+            <span>.env secured</span>
+          </span>
+          <button
+            type="button"
+            onClick={() => void refresh()}
+            disabled={loading}
+            className="cc-btn cc-btn-icon"
+            title="Refresh connector statuses"
+          >
+            <RefreshCw size={12} className={loading ? 'animate-spin' : ''} />
+          </button>
+          <button
+            type="button"
+            onClick={() => setOpen((val) => !val)}
+            className="cc-btn cc-btn-toggle"
+            title="Inspect all connector details and credentials"
+          >
+            <span>{open ? 'Hide' : 'Inspect'}</span>
+            {open ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+          </button>
+        </div>
       </div>
 
-      {open && (
-        <div style={{ padding: '6px 16px 16px' }}>
-          <div style={{ padding: 11, borderRadius: 10, background: '#0b1728', border: '1px solid #26364e', fontSize: 11, lineHeight: 1.5, marginBottom: 10 }}>
-            <strong>How to read this:</strong> the status badge reflects the backend's official/richer connector state. The <b>Free/fallback</b> line shows what NEXUS can still do without that credential. For X, a yellow credentials badge can coexist with free public-Post oEmbed because oEmbed fetches explicit Post URLs, not global keyword search. Never paste API tokens into this website or commit them to GitHub; put them only in local <code>.env</code>.
-          </div>
-          {error && <div style={{ color: '#fda4af', fontSize: 11, marginBottom: 10 }}>{error}</div>}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(285px,1fr))', gap: 10 }}>
-            {SOURCES.map((source) => {
-              const status = byPlatform.get(source.platform);
-              const state = status?.state || 'NOT_REPORTED';
-              const ready = state === 'READY' || state === 'LIVE';
-              return (
-                <article key={source.platform} style={{ border: '1px solid #24344c', background: '#0b1423', borderRadius: 12, padding: 13 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    {ready ? <CheckCircle2 size={16} color="#6ee7b7" /> : <CircleAlert size={16} color={stateTone(state)} />}
-                    <strong>{source.label}</strong>
-                    <span style={{ marginLeft: 'auto', fontSize: 9, fontWeight: 800, color: stateTone(state), border: `1px solid ${stateTone(state)}55`, padding: '3px 6px', borderRadius: 999 }}>{state.replaceAll('_', ' ')}</span>
-                  </div>
-                  <div style={{ marginTop: 9, display: 'grid', gap: 5, fontSize: 10, color: '#a8b6cc' }}>
-                    <div><b style={{ color: '#d8e4f6' }}>Official:</b> {source.official}</div>
-                    <div><b style={{ color: '#d8e4f6' }}>Free/fallback:</b> {source.freePath}</div>
-                    <div><b style={{ color: '#d8e4f6' }}>Input:</b> {source.input}</div>
-                    <div><b style={{ color: '#d8e4f6' }}>Demo priority:</b> {source.demoPriority}</div>
-                    {source.env.length > 0 && <div><b style={{ color: '#d8e4f6' }}>Local .env:</b> <code>{source.env.join(', ')}</code></div>}
-                  </div>
-                  <p style={{ margin: '9px 0 0', fontSize: 10, lineHeight: 1.45, color: '#9aabc3' }}>{source.note}</p>
-                  {status?.detail && <p style={{ margin: '6px 0 0', fontSize: 9, lineHeight: 1.4, color: '#6f819d' }}>Backend: {status.detail}</p>}
-                </article>
-              );
-            })}
-          </div>
-        </div>
-      )}
-    </section>
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={{ duration: 0.2 }}
+            className="cc-drawer"
+          >
+            <div className="cc-guidance">
+              <strong>Source Transparency:</strong> The status badge reflects the backend's official connector credential state. The <b>Free / Fallback</b> line shows what NEXUS executes at zero cost without that credential. For X, a credentials requirement badge coexists with free public-Post oEmbed because oEmbed fetches explicit Post URLs without requiring global search credits.
+            </div>
+
+            {error && <div className="cc-error">{error}</div>}
+
+            <div className="cc-grid">
+              {SOURCES.map((source) => {
+                const status = byPlatform.get(source.platform);
+                const state = status?.state || 'NOT_REPORTED';
+                const ready = state === 'READY' || state === 'LIVE';
+                const tone = stateTone(state);
+
+                return (
+                  <article key={source.platform} className="cc-card">
+                    <div className="cc-card-top">
+                      <div className="flex items-center gap-2">
+                        {ready ? (
+                          <CheckCircle2 size={15} className="text-emerald-400 shrink-0" />
+                        ) : (
+                          <CircleAlert size={15} style={{ color: tone }} className="shrink-0" />
+                        )}
+                        <strong className="text-xs text-slate-100 font-semibold">{source.label}</strong>
+                      </div>
+                      <span
+                        className="cc-state-chip"
+                        style={{ color: tone, borderColor: `${tone}44`, backgroundColor: `${tone}12` }}
+                      >
+                        {state.replaceAll('_', ' ')}
+                      </span>
+                    </div>
+
+                    <div className="cc-spec-list">
+                      <div><span className="cc-spec-label">Official:</span> <span className="cc-spec-val">{source.official}</span></div>
+                      <div><span className="cc-spec-label">Free path:</span> <span className="cc-spec-val text-blue-300">{source.freePath}</span></div>
+                      <div><span className="cc-spec-label">Input:</span> <span className="cc-spec-val">{source.input}</span></div>
+                      {source.env.length > 0 && (
+                        <div>
+                          <span className="cc-spec-label">Local .env:</span>
+                          <code className="cc-code">{source.env.join(', ')}</code>
+                        </div>
+                      )}
+                    </div>
+
+                    <p className="cc-note">{source.note}</p>
+                    {status?.detail && (
+                      <div className="cc-backend-detail">Backend: {status.detail}</div>
+                    )}
+                  </article>
+                );
+              })}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
   );
 }
