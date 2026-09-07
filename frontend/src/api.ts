@@ -256,6 +256,17 @@ const USE_GATEWAY = String(import.meta.env.VITE_USE_JAVA_GATEWAY || 'false').toL
 
 export function getCustomApiUrl(): string {
   if (typeof window !== 'undefined') {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const queryApi = params.get('api');
+      if (queryApi && queryApi.trim()) {
+        const cleaned = queryApi.trim().replace(/\/+$/, '');
+        localStorage.setItem('nexus_custom_api_url', cleaned);
+        return cleaned;
+      }
+    } catch {
+      // ignore query parsing errors
+    }
     return localStorage.getItem('nexus_custom_api_url') || '';
   }
   return '';

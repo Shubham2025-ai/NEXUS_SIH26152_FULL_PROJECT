@@ -165,7 +165,12 @@ export default function App({ onNavigateHome }: { onNavigateHome?: () => void } 
   const importRef = useRef<HTMLInputElement>(null);
 
   // Backend API URL & Health State
-  const [showApiModal, setShowApiModal] = useState(false);
+  const [showApiModal, setShowApiModal] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      return window.location.hash.includes('configure') || window.location.search.includes('configure=true');
+    }
+    return false;
+  });
   const [apiUrlInput, setApiUrlInput] = useState(getCustomApiUrl() || '');
   const [backendHealth, setBackendHealth] = useState<'checking' | 'connected' | 'disconnected'>('checking');
 

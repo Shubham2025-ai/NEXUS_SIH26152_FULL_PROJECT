@@ -174,6 +174,16 @@ export const PrismaHero = ({ onNavigateDashboard, className = "" }: PrismaHeroPr
     }
   };
 
+  const handleConfigureClick = (e?: React.MouseEvent) => {
+    if (e) e.preventDefault();
+    window.history.pushState({}, "", "/dashboard#configure");
+    if (onNavigateDashboard) {
+      onNavigateDashboard();
+    } else {
+      window.dispatchEvent(new PopStateEvent("popstate"));
+    }
+  };
+
   return (
     <div className={`relative w-full bg-[#070b14] text-[#edf4ff] selection:bg-[#5b8cff]/30 selection:text-white ${className}`}>
       
@@ -221,6 +231,15 @@ export const PrismaHero = ({ onNavigateDashboard, className = "" }: PrismaHeroPr
                   {item.label}
                 </a>
               ))}
+              <button
+                type="button"
+                onClick={handleConfigureClick}
+                className="text-[11px] font-medium transition-all sm:text-xs md:text-sm whitespace-nowrap rounded-full bg-blue-600/25 text-blue-300 border border-blue-500/40 px-3 py-1 hover:bg-blue-600/45 cursor-pointer flex items-center gap-1.5"
+                title="Connect Cloud Backend URL"
+              >
+                <span className="w-2 h-2 rounded-full bg-amber-400 inline-block" />
+                <span>Configure API</span>
+              </button>
             </div>
           </nav>
 
