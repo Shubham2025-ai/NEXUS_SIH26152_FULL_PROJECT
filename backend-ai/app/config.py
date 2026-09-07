@@ -20,7 +20,7 @@ class Settings(BaseSettings):
     nexus_db_url: str = "sqlite:///./nexus.db"
     nexus_api_host: str = "127.0.0.1"
     nexus_api_port: int = 8000
-    nexus_cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173,http://localhost:5174,http://127.0.0.1:5174,http://localhost:3000,http://127.0.0.1:3000,http://localhost:4173,http://127.0.0.1:4173,http://localhost:8080"
+    nexus_cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173,http://localhost:5174,http://127.0.0.1:5174,http://localhost:3000,http://127.0.0.1:3000,http://localhost:4173,http://127.0.0.1:4173,http://localhost:8080,https://frontend-six-wine-24.vercel.app"
     k_anon_min_group: int = 10
     pseudonym_salt: str = "change-me-for-non-demo-use"
     public_http_timeout_seconds: int = 15

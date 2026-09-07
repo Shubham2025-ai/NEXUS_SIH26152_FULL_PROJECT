@@ -253,14 +253,39 @@ export interface CollectorStatus {
 const DIRECT_API = import.meta.env.VITE_API_BASE_URL || '';
 const JAVA_API = import.meta.env.VITE_JAVA_GATEWAY_URL || 'http://127.0.0.1:8080';
 const USE_GATEWAY = String(import.meta.env.VITE_USE_JAVA_GATEWAY || 'false').toLowerCase() === 'true';
-export const API_BASE = USE_GATEWAY ? `${JAVA_API}/api/gateway` : DIRECT_API;
+
+export function getCustomApiUrl(): string {
+  if (typeof window !== 'undefined') {
+    return localStorage.getItem('nexus_custom_api_url') || '';
+  }
+  return '';
+}
+
+export function setCustomApiUrl(url: string) {
+  if (typeof window !== 'undefined') {
+    if (url.trim()) {
+      localStorage.setItem('nexus_custom_api_url', url.trim().replace(/\/+$/, ''));
+    } else {
+      localStorage.removeItem('nexus_custom_api_url');
+    }
+  }
+}
+
+export function getEffectiveApiBase(): string {
+  const custom = getCustomApiUrl();
+  if (custom) return custom;
+  return USE_GATEWAY ? `${JAVA_API}/api/gateway` : DIRECT_API;
+}
+
+export const API_BASE = getEffectiveApiBase();
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 45000);
+  const base = getEffectiveApiBase();
 
   try {
-    const url = `${API_BASE}${path}`;
+    const url = `${base}${path}`;
     const response = await fetch(url, {
       ...init,
       signal: init?.signal || controller.signal,
@@ -284,7 +309,15 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     }
 
     const contentType = response.headers.get('content-type') || '';
-    if (!contentType.includes('application/json')) return (await response.text()) as T;
+    if (!contentType.includes('application/json')) {
+      const isPublic = typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1';
+      if (isPublic && !base) {
+        throw new Error(
+          'Deployed frontend cannot reach a local backend directly. To run live queries in the cloud, deploy your backend (e.g. on Render) or set your Backend URL in Settings.'
+        );
+      }
+      throw new Error(`Endpoint ${path} returned non-JSON response (${contentType}). Verify backend is running.`);
+    }
     return response.json() as Promise<T>;
   } finally {
     clearTimeout(timeoutId);

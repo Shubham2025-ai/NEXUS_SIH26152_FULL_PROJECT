@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: nexus-sih26152-backend
+    env: python
+    rootDir: backend-ai
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.6
+      - key: YOUTUBE_API_KEY
+        sync: false
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: NEXUS_CORS_ORIGINS
+        value: 'https://frontend-six-wine-24.vercel.app,http://localhost:5173,http://127.0.0.1:5173'
