@@ -326,7 +326,9 @@ def build_network(events: list[SocialEvent], narrative_id: str | None = None) ->
             continue
         node = e.author_pseudo_id
         author_lookup[node] = e.author_display or f"user-{node[:6]}"
-        event_author[e.source_event_id] = node
+        event_author[e.id] = node
+        if e.source_event_id:
+            event_author[e.source_event_id] = node
         if e.author_display:
             handle_to_pseudo[e.author_display.lower().lstrip("@")] = node
         graph.add_node(node, platform=e.platform, label=author_lookup[node])
@@ -347,15 +349,16 @@ def build_network(events: list[SocialEvent], narrative_id: str | None = None) ->
         source = e.author_pseudo_id
         if not source:
             continue
+        is_repost = e.event_type in {"repost", "retweet", "quote"} or "rt @" in e.text.lower()
         if e.parent_event_id and e.parent_event_id in event_author:
-            is_repost = e.event_type in {"repost", "retweet", "quote"} or "rt @" in e.text.lower()
             edge_type = "repost" if is_repost else "reply"
             weight = 1.25 if is_repost else 1.5
             add_edge(source, event_author[e.parent_event_id], edge_type, weight)
         for mention in e.mentions:
             target = handle_to_pseudo.get(mention.lower().lstrip("@"))
             if target:
-                add_edge(source, target, "mention", 1.0)
+                edge_type = "repost" if is_repost else "mention"
+                add_edge(source, target, edge_type, 1.2 if is_repost else 1.0)
         for url in e.urls:
             domain = re.sub(r"^https?://", "", url).split("/")[0].lower()
             domain_authors[domain].append(source)
@@ -808,16 +811,22 @@ def seed_demo_events(now: datetime | None = None) -> list[SocialEventIn]:
         *,
         source_mode: str = "REPLAY",
         parent: str | None = None,
+        event_type: str | None = None,
         likes: int = 0,
         shares: int = 0,
         topic: str = "river",
     ):
         profile_index = int(re.sub(r"\D", "", author)[-2:] or "1") % len(regions) if any(ch.isdigit() for ch in author) else idx % len(regions)
+        ev_type = event_type or (
+            "repost"
+            if (parent and "RT @" in text)
+            else ("message" if platform == "telegram" else ("video_comment" if platform == "youtube" else "post"))
+        )
         rows.append(
             SocialEventIn(
                 platform=platform,  # type: ignore[arg-type]
                 source_event_id=f"demo-{topic}-{idx:03d}",
-                event_type="message" if platform == "telegram" else ("video_comment" if platform == "youtube" else "post"),
+                event_type=ev_type,
                 author_platform_id=f"{platform}-{author}",
                 author_display=author,
                 text=text,
@@ -866,12 +875,17 @@ def seed_demo_events(now: datetime | None = None) -> list[SocialEventIn]:
             suffix = "" if j % 3 else " @civic_voice_07"
             if j % 4 == 0:
                 suffix += " https://example.invalid/riverlink-notice"
+            is_rt = wave > 0 and j % 2 == 0
+            parent_ref = f"demo-river-{((j % 4) + 1):03d}" if is_rt else None
+            rt_prefix = "RT @civic_voice_07: " if (is_rt and platform == "x") else ""
             add(
                 idx,
                 platform,
                 122 + wave * 10 + j,
-                text + suffix,
+                rt_prefix + text + suffix,
                 author,
+                parent=parent_ref,
+                event_type="repost" if is_rt else None,
                 likes=12 + wave * 8 + j * 2,
                 shares=3 + wave * 2 + (j % 4),
             )

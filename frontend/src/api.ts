@@ -260,7 +260,7 @@ function getFallbackData(path: string): unknown | null {
   if (cleanPath === '/api/connectors/status') return demoData.connectors;
   if (cleanPath === '/api/overview') return demoData.overview;
   if (cleanPath === '/api/timeline') return demoData.timeline;
-  if (cleanPath === '/api/narratives') return demoData.narratives;
+  if (cleanPath === '/api/narratives' || cleanPath === '/api/trends') return demoData.narratives;
   if (cleanPath.startsWith('/api/narratives/')) {
     const id = decodeURIComponent(cleanPath.replace('/api/narratives/', ''));
     const details = demoData.narrativeDetails as Record<string, unknown>;
