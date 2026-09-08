@@ -108,6 +108,17 @@ async def telegram_monitored_search(channel_spec: str, limit: int = 25) -> list[
     if not channels:
         raise ConnectorError("Configure at least one public Telegram channel username.", "ERROR")
 
+    # Clean query: strip out channel identifiers from query terms so posts are not dropped
+    channel_clean_set = {c.lower() for c in channels}
+    clean_words = []
+    for word in query.split():
+        clean_w = word.lower().lstrip("@/").strip()
+        if clean_w.startswith("channel:"):
+            clean_w = clean_w[len("channel:"):]
+        if clean_w not in channel_clean_set:
+            clean_words.append(word)
+    active_filter_query = " ".join(clean_words).strip()
+
     per_channel = max(12, min(40, limit * 2))
     results = await asyncio.gather(
         *(_telegram_public_channel_original(channel, per_channel) for channel in channels),
@@ -121,13 +132,13 @@ async def telegram_monitored_search(channel_spec: str, limit: int = 25) -> list[
             failures.append(f"{channel}: {str(result)[:120]}")
             continue
         for event in result:
-            if query and not _matches_query(event, query):
+            if active_filter_query and not _matches_query(event, active_filter_query):
                 continue
             profile = dict(event.public_profile or {})
             profile.update(
                 {
                     "monitored_channel": channel,
-                    "workspace_query_filter": query or None,
+                    "workspace_query_filter": active_filter_query or None,
                     "collection_scope": "public_preview_monitored_channel",
                 }
             )

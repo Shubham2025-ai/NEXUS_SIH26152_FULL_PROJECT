@@ -46,11 +46,16 @@ def test_fresh_workspace_search_clears_previous_topic_without_network_calls(monk
     async def fake_telegram_poll(max_updates: int = 50):
         return []
 
+    async def fake_x_search(request):
+        seen['x_query'] = request.query
+        return []
+
     # Fresh Search now intentionally includes the configured/default Telegram
-    # monitored channel and configured bot poll. Stub them so this contract test remains deterministic and
+    # monitored channel, X search, and configured bot poll. Stub them so this contract test remains deterministic and
     # makes zero external network calls while verifying the automatic source path.
     monkeypatch.setattr(main_module, 'telegram_public_channel', fake_telegram_public_channel)
     monkeypatch.setattr(main_module, 'telegram_poll', fake_telegram_poll)
+    monkeypatch.setattr(main_module, 'x_search', fake_x_search)
 
     fresh = client.post(
         '/api/search/workspace',

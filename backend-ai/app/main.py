@@ -747,7 +747,7 @@ def api_events(
     narrative_id: str | None = None,
     since: datetime | None = None,
     until: datetime | None = None,
-    newest_first: bool = False,
+    newest_first: bool = True,
 ):
     return {
         "events": STORE.list_events(

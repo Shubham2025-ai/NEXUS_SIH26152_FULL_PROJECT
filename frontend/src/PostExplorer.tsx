@@ -274,7 +274,13 @@ export default function PostExplorer({
         )}
 
         <div className="post-result-list">
-          {filteredEvents.length === 0 ? (
+          {events.length === 0 ? (
+            <div className="post-empty" style={{ minHeight: 180, padding: 16 }}>
+              <Radio size={24} />
+              <h3 style={{ fontSize: 13, marginTop: 8 }}>Workspace Empty</h3>
+              <p style={{ margin: '6px 0 10px', fontSize: 11 }}>No posts collected yet for this query.</p>
+            </div>
+          ) : filteredEvents.length === 0 ? (
             <div className="post-empty" style={{ minHeight: 180, padding: 16 }}>
               <CalendarIcon size={24} />
               <h3 style={{ fontSize: 13, marginTop: 8 }}>No posts on {activeDate?.toLocaleDateString()}</h3>
@@ -312,19 +318,27 @@ export default function PostExplorer({
       </aside>
 
       <section className="post-detail-stage">
-        {!selected ? (
+        {events.length === 0 ? (
+          <div className="post-empty">
+            <Radio size={36} />
+            <h3>No posts in workspace</h3>
+            <p>No social evidence has been ingested yet. Run a search or use a connector to collect live evidence.</p>
+          </div>
+        ) : !selected ? (
           <div className="post-empty">
             <CalendarIcon size={36} />
-            <h3>No posts match {activeDate?.toLocaleDateString()}</h3>
+            <h3>No posts match {activeDate ? activeDate.toLocaleDateString() : 'selected filters'}</h3>
             <p>No activity was observed on this date in the current workspace. Clear the date filter to inspect posts from other dates.</p>
-            <button
-              type="button"
-              className="btn btn-primary"
-              style={{ marginTop: 12 }}
-              onClick={() => handleDateChange(undefined)}
-            >
-              Clear date filter ({events.length} posts available)
-            </button>
+            {activeDate && (
+              <button
+                type="button"
+                className="btn btn-primary"
+                style={{ marginTop: 12 }}
+                onClick={() => handleDateChange(undefined)}
+              >
+                Clear date filter ({events.length} posts available)
+              </button>
+            )}
           </div>
         ) : (
           <>

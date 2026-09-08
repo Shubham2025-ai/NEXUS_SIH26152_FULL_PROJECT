@@ -160,20 +160,49 @@ class WorkspaceSearchRequest(BaseModel):
             return self
         settings = get_settings()
 
-        # Extract explicit channel if present in query, e.g. @channel or t.me/channel
         explicit_channel = None
+        filter_query = self.query.strip()
+
         url_match = re.search(r"(?:https?://)?(?:www\.)?t\.me/(?:s/)?([A-Za-z0-9_]{4,64})", self.query, flags=re.IGNORECASE)
         if url_match:
             explicit_channel = url_match.group(1)
+            filter_query = (self.query[:url_match.start()] + " " + self.query[url_match.end():]).strip()
         else:
-            handle_match = re.search(r"@([A-Za-z0-9_]{4,64})", self.query)
-            if handle_match:
-                explicit_channel = handle_match.group(1)
+            channel_match = re.search(r"\bchannel:([A-Za-z0-9_]{4,64})\b", self.query, flags=re.IGNORECASE)
+            if channel_match:
+                explicit_channel = channel_match.group(1)
+                filter_query = (self.query[:channel_match.start()] + " " + self.query[channel_match.end():]).strip()
+            else:
+                handle_match = re.search(r"@([A-Za-z0-9_]{4,64})", self.query)
+                if handle_match:
+                    explicit_channel = handle_match.group(1)
+                    filter_query = (self.query[:handle_match.start()] + " " + self.query[handle_match.end():]).strip()
 
-        raw = (self.telegram_channel or explicit_channel or settings.telegram_channel or settings.telegram_public_channels or "telegram,durov").strip()
+        if self.telegram_channel:
+            clean_tg = self.telegram_channel.split("||", 1)[0].strip().lstrip("@").strip("/")
+            if clean_tg.lower() == filter_query.lower():
+                filter_query = ""
+            raw = clean_tg
+        elif explicit_channel:
+            raw = explicit_channel
+        else:
+            # Check if self.query itself is a known public channel or single alphanumeric handle
+            clean_q = self.query.strip().lstrip("@").strip("/")
+            known_channels = {c.lower() for c in (settings.telegram_public_channels or "").replace(";", ",").split(",") if c.strip()}
+            if clean_q.lower() in known_channels or (re.fullmatch(r"[A-Za-z0-9_]{4,64}", clean_q) and not self.enable_x and not self.enable_youtube):
+                raw = clean_q
+                filter_query = ""
+            else:
+                raw = (settings.telegram_channel or settings.telegram_public_channels or "telegram,durov").strip()
         raw = raw or "telegram,durov"
         raw = raw.split("||", 1)[0].strip()
-        self.telegram_channel = f"{raw}||{self.query}"
+
+        # Clean filter query if it only contains the target channel name
+        target_channels = [c.lower().strip() for c in re.split(r"[,;\s]+", raw) if c.strip()]
+        if filter_query.lower().strip("@/") in target_channels:
+            filter_query = ""
+
+        self.telegram_channel = f"{raw}||{filter_query}"
         return self
 
 

@@ -158,7 +158,7 @@ export default function App({ onNavigateHome }: { onNavigateHome?: () => void } 
   const [showEvidenceLedger, setShowEvidenceLedger] = useState(false);
   const [sentimentChartMode, setSentimentChartMode] = useState<'all' | 'positive' | 'negative' | 'volume'>('all');
   const [conversationLimit, setConversationLimit] = useState(8);
-  const [clearWorkspaceOnSearch, setClearWorkspaceOnSearch] = useState(false);
+  const [clearWorkspaceOnSearch, setClearWorkspaceOnSearch] = useState(true);
 
   // Status & Feedback
   const [loading, setLoading] = useState(false);
@@ -353,7 +353,11 @@ export default function App({ onNavigateHome }: { onNavigateHome?: () => void } 
 
       // Transition to Intelligence Report
       setViewMode('report');
-      setNotice(`Investigation complete: ${searchRes.inserted} events collected across live sources.`);
+      if (searchRes.inserted === 0 && (searchRes.total_events ?? 0) === 0) {
+        setNotice(`Investigation complete: 0 posts found for "${clean}". Tip: Check selected sources or specify a public Telegram channel.`);
+      } else {
+        setNotice(`Investigation complete: ${searchRes.inserted} events collected across live sources (${searchRes.total_events ?? searchRes.inserted} in workspace).`);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Investigation encountered an issue.');
       setViewMode('input');

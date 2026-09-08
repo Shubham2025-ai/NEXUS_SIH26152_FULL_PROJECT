@@ -92,7 +92,7 @@ export const IntelligenceTargetHub: React.FC<IntelligenceTargetHubProps> = ({
 
     if (targetType === 'telegram') {
       const channelName = clean.replace(/^@/, '').replace(/^https?:\/\/t\.me\//, '').trim();
-      await onExecuteLiveAnalysis(`channel:${channelName}`, {
+      await onExecuteLiveAnalysis(`@${channelName}`, {
         reset: true,
         limitPerSource: 10,
         enableTelegram: true,

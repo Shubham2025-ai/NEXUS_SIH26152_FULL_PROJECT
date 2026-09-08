@@ -27,7 +27,7 @@ class Settings(BaseSettings):
     pseudonym_salt: str = "change-me-for-non-demo-use"
     public_http_timeout_seconds: int = 15
 
-    x_provider: str = "official"
+    x_provider: str = "apify"
     apify_api_token: str = ""
     apify_x_actor_id: str = "api-ninja/x-twitter-advanced-search"
     apify_timeout_seconds: int = 120

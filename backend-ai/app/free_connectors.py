@@ -19,7 +19,7 @@ from .connectors import ConnectorError
 from .schemas import SocialEventIn
 
 SETTINGS = get_settings()
-USER_AGENT = "NEXUS-SIH26152/0.3 (+public-social-intelligence-prototype)"
+USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
 
 
 def _now() -> datetime:

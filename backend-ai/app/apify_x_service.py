@@ -93,8 +93,8 @@ def normalize_apify_tweet(
     if not post_id or not text or post_id in {"-1", "0"} or raw.get("noResults") or raw.get("type") == "mock_tweet":
         return None
 
-    # Resolve author info
-    author = raw.get("author") or raw.get("user") or {}
+    # Resolve author info from author, user, or user_info (api-ninja format)
+    author = raw.get("author") or raw.get("user") or raw.get("user_info") or {}
     if not isinstance(author, dict):
         author = {}
 
@@ -102,9 +102,9 @@ def normalize_apify_tweet(
         author.get("userName")
         or author.get("username")
         or author.get("screen_name")
+        or raw.get("screen_name")
         or raw.get("userName")
         or raw.get("username")
-        or raw.get("screen_name")
         or ""
     ).strip().lstrip("@")
 
@@ -119,8 +119,10 @@ def normalize_apify_tweet(
     author_id = str(
         author.get("id")
         or author.get("id_str")
+        or author.get("rest_id")
         or raw.get("user_id")
         or raw.get("author_id")
+        or username
         or ""
     ).strip()
 
@@ -139,11 +141,33 @@ def normalize_apify_tweet(
     )
 
     # Resolve engagement
-    likes = int(raw.get("likeCount") or raw.get("likes") or raw.get("favorite_count") or 0)
-    reposts = int(raw.get("retweetCount") or raw.get("retweets") or raw.get("retweet_count") or 0)
-    replies = int(raw.get("replyCount") or raw.get("replies") or raw.get("reply_count") or 0)
-    quotes = int(raw.get("quoteCount") or raw.get("quotes") or raw.get("quote_count") or 0)
-    views = raw.get("viewCount") or raw.get("views") or raw.get("views_count")
+    likes = int(
+        raw.get("likeCount")
+        or raw.get("likes")
+        or raw.get("favorite_count")
+        or raw.get("favorites")
+        or 0
+    )
+    reposts = int(
+        raw.get("retweetCount")
+        or raw.get("retweets")
+        or raw.get("retweet_count")
+        or 0
+    )
+    replies = int(
+        raw.get("replyCount")
+        or raw.get("replies")
+        or raw.get("reply_count")
+        or 0
+    )
+    quotes = int(
+        raw.get("quoteCount")
+        or raw.get("quotes")
+        or raw.get("quote_count")
+        or 0
+    )
+    raw_views = raw.get("viewCount") or raw.get("views") or raw.get("views_count")
+    views = int(raw_views) if raw_views is not None and str(raw_views).isdigit() else None
 
     # Extract entities
     entities = raw.get("entities") or {}
@@ -194,11 +218,20 @@ def normalize_apify_tweet(
 
     lang = raw.get("lang") or raw.get("language")
 
+    avatar_url = (
+        author.get("profilePicture")
+        or author.get("avatar")
+        or author.get("avatar_url")
+        or author.get("profile_image_url")
+        or raw.get("avatar")
+    )
+    followers = author.get("followers") or author.get("followersCount") or author.get("followers_count")
+
     public_profile = {
         "bio": author.get("description") or author.get("bio"),
-        "region": author.get("location"),
-        "avatar_url": author.get("profilePicture") or author.get("avatar_url") or author.get("profile_image_url"),
-        "followers": author.get("followers") or author.get("followersCount"),
+        "region": author.get("location") or raw.get("location"),
+        "avatar_url": avatar_url,
+        "followers": followers,
         "verified": bool(author.get("isVerified") or author.get("isBlueVerified") or author.get("verified")),
         "connector": "apify_x",
         "provider": "apify",
@@ -225,7 +258,7 @@ def normalize_apify_tweet(
             "reposts": reposts,
             "replies": replies,
             "quotes": quotes,
-            "views": int(views) if views is not None else None,
+            "views": views,
         },
         public_profile=public_profile,
         source_mode="LIVE",
@@ -250,7 +283,7 @@ class ApifyXService:
 
     @property
     def actor_id(self) -> str:
-        return self.settings.apify_x_actor_id.strip() or "apidojo/tweet-scraper"
+        return self.settings.apify_x_actor_id.strip() or "api-ninja/x-twitter-advanced-search"
 
     @property
     def actor_slug(self) -> str:
@@ -436,30 +469,18 @@ class ApifyXService:
                 if len(normalized) >= limit:
                     break
 
-        # If primary actor returned dummy/restricted items (e.g. apidojo on free plan), try fallback
-        if not normalized and items and any(isinstance(i, dict) and (i.get("noResults") or i.get("type") == "mock_tweet") for i in items):
-            fallback_actor = "api-ninja/x-twitter-advanced-search"
-            if actor != fallback_actor:
-                logger.warning(
-                    "Apify actor '%s' returned paid-plan restriction dummy data ('noResults' / 'mock_tweet'). Automatically falling back to '%s'...",
-                    actor,
-                    fallback_actor,
+        if not normalized:
+            if items and any(isinstance(i, dict) and (i.get("noResults") or i.get("type") == "mock_tweet") for i in items):
+                raise ConnectorError(
+                    f"Apify Actor '{actor}' returned noResults. The actor developer restricts free plan API usage. Set APIFY_X_ACTOR_ID=api-ninja/x-twitter-advanced-search in .env.",
+                    "ACTOR_ERROR",
                 )
-                fallback_slug = fallback_actor.replace("/", "~")
-                fallback_input = {"query": query.strip(), "maxItems": limit}
-                fallback_url = f"https://api.apify.com/v2/acts/{fallback_slug}/run-sync-get-dataset-items"
-                async with httpx.AsyncClient(timeout=timeout + 15) as fb_client:
-                    try:
-                        fb_res = await fb_client.post(fallback_url, json=fallback_input, headers=headers, params=params)
-                        if fb_res.status_code in {200, 201} and isinstance(fb_res.json(), list):
-                            for raw_item in fb_res.json():
-                                event = normalize_apify_tweet(raw_item, query, run_id, fallback_actor)
-                                if event is not None:
-                                    normalized.append(event)
-                                    if len(normalized) >= limit:
-                                        break
-                    except Exception as fb_exc:
-                        logger.warning("Fallback actor call failed: %s", fb_exc)
+            if items:
+                raise ConnectorError(
+                    f"Apify Actor '{actor}' returned data but no valid posts could be normalized for query '{query}'.",
+                    "MALFORMED_DATA",
+                )
+            return []
 
         logger.info(
             "Apify X normalization complete | Valid posts: %d / %d",
