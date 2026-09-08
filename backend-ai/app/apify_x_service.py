@@ -90,7 +90,7 @@ def normalize_apify_tweet(
         or ""
     ).strip()
 
-    if not post_id or not text:
+    if not post_id or not text or post_id in {"-1", "0"} or raw.get("noResults") or raw.get("type") == "mock_tweet":
         return None
 
     # Resolve author info
@@ -435,6 +435,31 @@ class ApifyXService:
                 normalized.append(event)
                 if len(normalized) >= limit:
                     break
+
+        # If primary actor returned dummy/restricted items (e.g. apidojo on free plan), try fallback
+        if not normalized and items and any(isinstance(i, dict) and (i.get("noResults") or i.get("type") == "mock_tweet") for i in items):
+            fallback_actor = "api-ninja/x-twitter-advanced-search"
+            if actor != fallback_actor:
+                logger.warning(
+                    "Apify actor '%s' returned paid-plan restriction dummy data ('noResults' / 'mock_tweet'). Automatically falling back to '%s'...",
+                    actor,
+                    fallback_actor,
+                )
+                fallback_slug = fallback_actor.replace("/", "~")
+                fallback_input = {"query": query.strip(), "maxItems": limit}
+                fallback_url = f"https://api.apify.com/v2/acts/{fallback_slug}/run-sync-get-dataset-items"
+                async with httpx.AsyncClient(timeout=timeout + 15) as fb_client:
+                    try:
+                        fb_res = await fb_client.post(fallback_url, json=fallback_input, headers=headers, params=params)
+                        if fb_res.status_code in {200, 201} and isinstance(fb_res.json(), list):
+                            for raw_item in fb_res.json():
+                                event = normalize_apify_tweet(raw_item, query, run_id, fallback_actor)
+                                if event is not None:
+                                    normalized.append(event)
+                                    if len(normalized) >= limit:
+                                        break
+                    except Exception as fb_exc:
+                        logger.warning("Fallback actor call failed: %s", fb_exc)
 
         logger.info(
             "Apify X normalization complete | Valid posts: %d / %d",

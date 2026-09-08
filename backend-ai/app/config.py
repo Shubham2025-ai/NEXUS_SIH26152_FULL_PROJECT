@@ -29,7 +29,7 @@ class Settings(BaseSettings):
 
     x_provider: str = "official"
     apify_api_token: str = ""
-    apify_x_actor_id: str = "apidojo/tweet-scraper"
+    apify_x_actor_id: str = "api-ninja/x-twitter-advanced-search"
     apify_timeout_seconds: int = 120
     apify_max_items_per_run: int = 50
 
