@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from datetime import datetime, timezone
 from typing import Any, Literal
 from uuid import uuid4
@@ -135,7 +136,18 @@ class WorkspaceSearchRequest(BaseModel):
             self.telegram_channel = None
             return self
         settings = get_settings()
-        raw = (self.telegram_channel or settings.telegram_channel or settings.telegram_public_channels or "telegram,durov").strip()
+
+        # Extract explicit channel if present in query, e.g. @channel or t.me/channel
+        explicit_channel = None
+        url_match = re.search(r"(?:https?://)?(?:www\.)?t\.me/(?:s/)?([A-Za-z0-9_]{4,64})", self.query, flags=re.IGNORECASE)
+        if url_match:
+            explicit_channel = url_match.group(1)
+        else:
+            handle_match = re.search(r"@([A-Za-z0-9_]{4,64})", self.query)
+            if handle_match:
+                explicit_channel = handle_match.group(1)
+
+        raw = (self.telegram_channel or explicit_channel or settings.telegram_channel or settings.telegram_public_channels or "telegram,durov").strip()
         raw = raw or "telegram,durov"
         raw = raw.split("||", 1)[0].strip()
         self.telegram_channel = f"{raw}||{self.query}"

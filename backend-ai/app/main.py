@@ -323,8 +323,18 @@ async def workspace_search(request: WorkspaceSearchRequest):
             search_query=request.query,
             search_session_id=session_id,
         )
-        collected.extend(stamped)
-        sources[platform] = {"state": "OK", "received": len(stamped), "connector": connector}
+        detail = None
+        if len(stamped) == 0:
+            if platform == "telegram":
+                detail = f"No public posts matching '{request.query}' found in queried channels. Tip: specify a dedicated public channel (e.g. @channel_name) or enable YouTube/X."
+            else:
+                detail = f"No public posts matching '{request.query}' found on {platform}."
+        sources[platform] = {
+            "state": "OK",
+            "received": len(stamped),
+            "connector": connector,
+            **({"detail": detail} if detail else {}),
+        }
 
     ingest_result = ingest(collected) if collected else {
         "received": 0,

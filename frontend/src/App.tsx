@@ -779,9 +779,18 @@ export default function App({ onNavigateHome }: { onNavigateHome?: () => void } 
                 )}
               </>
             ) : (
-              <p className="primary-insight-desc">
-                No dominant narrative detected yet for this topic. Run a fresh search or poll live bridges to ingest events.
-              </p>
+              <div style={{ padding: '20px', borderRadius: 8, background: 'rgba(255, 255, 255, 0.03)', border: '1px solid rgba(255, 255, 255, 0.08)' }}>
+                <p style={{ fontSize: 15, fontWeight: 500, color: '#F1F5F9', marginBottom: 6 }}>
+                  No matching intelligence events observed for &ldquo;{activeQuery}&rdquo;.
+                </p>
+                <p style={{ fontSize: 13, color: '#94A3B8', lineHeight: 1.6, marginBottom: 12 }}>
+                  The queried source connector(s) did not contain verified public posts matching these keywords.
+                </p>
+                <div style={{ fontSize: 12, color: '#38BDF8', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <span>💡 <b>Telegram tip:</b> Public Telegram preview is channel-specific. To monitor a specific public channel, include its handle or link (e.g. <code>@tcs_nqt</code> or <code>t.me/channel_name</code>) in your search.</span>
+                  <span>💡 <b>Broad topic tip:</b> Enable YouTube or X connectors in the source selector for comprehensive multi-platform coverage.</span>
+                </div>
+              </div>
             )}
           </section>
 

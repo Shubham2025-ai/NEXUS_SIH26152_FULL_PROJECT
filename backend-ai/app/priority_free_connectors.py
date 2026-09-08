@@ -43,9 +43,18 @@ def _matches_query(event: SocialEventIn, query: str) -> bool:
             " ".join(f"@{mention}" for mention in event.mentions),
         ]
     ).lower()
-    # A monitored-source search should be useful for natural-language queries,
-    # so any meaningful query token/phrase is enough to include the post.
-    return any(term in haystack for term in terms)
+
+    # Distinguish substantive topic keywords (words / alphanumeric) from standalone numbers (e.g. years '2026')
+    substantive = [t.lstrip("#@") for t in terms if not t.isdigit() and len(t.lstrip("#@")) >= 2]
+    numeric = [t for t in terms if t.isdigit()]
+
+    if substantive:
+        # A post MUST match at least one substantive topic keyword.
+        # Matching ONLY a standalone 4-digit number like "2026" without topic keywords is a false positive.
+        return any(term in haystack for term in substantive)
+    else:
+        # Pure numeric query (e.g. "2026")
+        return any(term in haystack for term in numeric)
 
 
 def _parse_channel_spec(spec: str) -> tuple[list[str], str]:
