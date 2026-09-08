@@ -83,11 +83,34 @@ class ConnectorStatus(BaseModel):
     ]
     detail: str
     source_mode: SourceMode | None = None
+    provider: str | None = None
 
 
 class XSearchRequest(BaseModel):
     query: str = Field(min_length=1, max_length=512)
-    max_results: int = Field(default=20, ge=10, le=100)
+    max_results: int = Field(default=20, ge=1, le=100)
+    language: str | None = None
+
+
+class ApifyXSearchRequest(BaseModel):
+    query: str = Field(min_length=1, max_length=512)
+    max_results: int = Field(default=20, ge=1, le=100)
+    language: str | None = None
+
+
+class ApifyXSearchResponse(BaseModel):
+    status: str
+    platform: str = "x"
+    provider: str = "apify"
+    actor: str | None = None
+    query: str
+    posts_fetched: int
+    posts_inserted: int
+    duplicates: int
+    analysis_status: str = "completed"
+    event_ids: list[str] = Field(default_factory=list)
+    total_events: int
+    events: list[SocialEvent] = Field(default_factory=list)
 
 
 class TelegramPollRequest(BaseModel):
@@ -225,3 +248,5 @@ class HealthResponse(BaseModel):
     service: str
     version: str
     environment: str
+    x_provider: str | None = None
+    apify_x: str | None = None

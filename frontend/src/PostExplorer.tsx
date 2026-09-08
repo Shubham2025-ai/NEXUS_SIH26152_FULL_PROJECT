@@ -121,13 +121,18 @@ export default function PostExplorer({
     onDateChange?.(date);
   };
 
+  const [selectedPlatform, setSelectedPlatform] = useState<string>('all');
+
   const filteredEvents = useMemo(() => {
-    if (!activeDate) return events;
     return events.filter((event) => {
-      const d = new Date(event.created_at);
-      return !Number.isNaN(d.getTime()) && isSameDay(d, activeDate);
+      if (selectedPlatform !== 'all' && event.platform !== selectedPlatform) return false;
+      if (activeDate) {
+        const d = new Date(event.created_at);
+        if (Number.isNaN(d.getTime()) || !isSameDay(d, activeDate)) return false;
+      }
+      return true;
     });
-  }, [events, activeDate]);
+  }, [events, activeDate, selectedPlatform]);
 
   const defaultCalendarMonth = useMemo(() => {
     if (activeDate) return activeDate;
@@ -169,6 +174,34 @@ export default function PostExplorer({
             <strong>{filteredEvents.length} {activeDate ? 'filtered' : 'observed'} posts</strong>
           </div>
           <ShieldCheck size={17} />
+        </div>
+
+        <div style={{ display: 'flex', gap: 6, padding: '8px 12px', flexWrap: 'wrap', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+          {['all', 'x', 'telegram', 'youtube'].map((p) => {
+            const count = p === 'all' ? events.length : events.filter((e) => e.platform === p).length;
+            if (p !== 'all' && count === 0) return null;
+            const label = p === 'all' ? 'All Sources' : p === 'x' ? '𝕏 X' : p.charAt(0).toUpperCase() + p.slice(1);
+            const isSelected = selectedPlatform === p;
+            return (
+              <button
+                key={p}
+                type="button"
+                onClick={() => setSelectedPlatform(p)}
+                style={{
+                  fontSize: 11,
+                  padding: '3px 8px',
+                  borderRadius: 6,
+                  border: isSelected ? '1px solid #3b82f6' : '1px solid rgba(255,255,255,0.1)',
+                  background: isSelected ? '#1d4ed8' : 'rgba(255,255,255,0.04)',
+                  color: isSelected ? '#fff' : '#94a3b8',
+                  cursor: 'pointer',
+                  fontWeight: isSelected ? 600 : 400,
+                }}
+              >
+                {label} ({count})
+              </button>
+            );
+          })}
         </div>
 
         <div className="post-filter-toolbar">

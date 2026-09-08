@@ -14,6 +14,7 @@ export interface ConnectorStatus {
   state: ConnectorState;
   detail: string;
   source_mode?: 'LIVE' | 'REPLAY' | 'IMPORT' | null;
+  provider?: string;
 }
 
 export interface TrendMetrics {
@@ -256,6 +257,21 @@ export interface CollectorStatus {
   note: string;
 }
 
+export interface ApifyXSearchResponse {
+  status: string;
+  platform: string;
+  provider: string;
+  actor?: string;
+  query: string;
+  posts_fetched: number;
+  posts_inserted: number;
+  duplicates: number;
+  analysis_status: string;
+  event_ids: string[];
+  total_events: number;
+  events?: SocialEvent[];
+}
+
 const DIRECT_API = import.meta.env.VITE_API_BASE_URL || '';
 const JAVA_API = import.meta.env.VITE_JAVA_GATEWAY_URL || 'http://127.0.0.1:8080';
 const USE_GATEWAY = String(import.meta.env.VITE_USE_JAVA_GATEWAY || 'false').toLowerCase() === 'true';
@@ -399,8 +415,11 @@ export const api = {
   pollTelegram: () => request<{ inserted: number; total_events: number }>('/api/connectors/telegram/poll', {
     method: 'POST', body: JSON.stringify({ max_updates: 50 }),
   }),
-  searchX: (query: string) => request<{ inserted: number; total_events: number }>('/api/connectors/x/search', {
-    method: 'POST', body: JSON.stringify({ query, max_results: 20 }),
+  searchX: (query: string, maxResults: number = 20) => request<{ inserted: number; total_events: number; platform?: string; provider?: string }>('/api/connectors/x/search', {
+    method: 'POST', body: JSON.stringify({ query, max_results: maxResults }),
+  }),
+  searchSocialX: (query: string, maxResults: number = 20, language?: string) => request<ApifyXSearchResponse>('/api/social/x/search', {
+    method: 'POST', body: JSON.stringify({ query, max_results: maxResults, language: language || null }),
   }),
   searchYouTube: (query: string) => request<{ inserted: number; total_events: number }>('/api/connectors/youtube/search', {
     method: 'POST', body: JSON.stringify({ query, max_videos: 3, max_comments_per_video: 20 }),

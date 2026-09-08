@@ -27,6 +27,12 @@ class Settings(BaseSettings):
     pseudonym_salt: str = "change-me-for-non-demo-use"
     public_http_timeout_seconds: int = 15
 
+    x_provider: str = "official"
+    apify_api_token: str = ""
+    apify_x_actor_id: str = "apidojo/tweet-scraper"
+    apify_timeout_seconds: int = 120
+    apify_max_items_per_run: int = 50
+
     x_bearer_token: str = ""
     x_max_results_per_run: int = 50
     x_max_pages_per_run: int = 2
@@ -92,6 +98,18 @@ class Settings(BaseSettings):
             if clean and clean not in values:
                 values.append(clean)
         return values[:12]
+
+    @property
+    def is_apify_provider(self) -> bool:
+        return (self.x_provider or "").lower().strip() == "apify"
+
+    @property
+    def is_official_x_provider(self) -> bool:
+        return (self.x_provider or "").lower().strip() == "official"
+
+    @property
+    def apify_configured(self) -> bool:
+        return bool(self.apify_api_token and self.apify_api_token.strip())
 
     @property
     def effective_db_url(self) -> str:

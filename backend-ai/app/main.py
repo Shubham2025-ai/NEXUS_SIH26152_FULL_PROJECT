@@ -23,10 +23,11 @@ from .analytics import (
     timeline,
     top_workspace_keywords,
 )
+from .apify_x_service import get_apify_x_service
 from .certificates import build_narrative_certificate, certificate_summary
 from .collector import COLLECTOR, CollectorStartRequest
 from .config import get_settings
-from .connectors import ConnectorError, connector_statuses, meta_sync, telegram_poll, x_recent_search, youtube_search
+from .connectors import ConnectorError, connector_statuses, meta_sync, telegram_poll, x_recent_search, x_search, youtube_search
 from .db import get_store
 from .free_connectors import (
     bluesky_search,
@@ -42,6 +43,8 @@ from .priority_free_connectors import _extract_x_urls, telegram_monitored_search
 _ORIGINAL_TELEGRAM_PUBLIC_CHANNEL = telegram_public_channel
 from .meta_discovery import instagram_hashtag_search
 from .schemas import (
+    ApifyXSearchRequest,
+    ApifyXSearchResponse,
     ConnectorStatus,
     DemoSeedRequest,
     HealthResponse,
@@ -146,17 +149,40 @@ def enhanced_connector_statuses() -> list[ConnectorStatus]:
     """Expose official access and free fallbacks without pretending degraded access is equivalent."""
     base = {item.platform: item for item in connector_statuses()}
 
-    if not SETTINGS.x_bearer_token:
+    provider = (SETTINGS.x_provider or "apify").lower().strip()
+    if provider == "apify":
         base["x"] = ConnectorStatus(
             platform="x",
-            state="DEGRADED" if SETTINGS.x_public_rss_url_template else "CREDENTIALS_REQUIRED",
+            provider="apify",
+            state="LIVE" if SETTINGS.apify_configured else "CREDENTIALS_REQUIRED",
             detail=(
-                "Configured permitted RSS/public bridge is available; official X API remains the preferred richer path."
-                if SETTINGS.x_public_rss_url_template
-                else "Official recent-search requires X developer access/credits. Replay/import remains available; optionally configure a permitted X_PUBLIC_RSS_URL_TEMPLATE."
+                f"Apify X Collector configured with actor '{SETTINGS.apify_x_actor_id}'."
+                if SETTINGS.apify_configured
+                else "Apify X provider selected, but APIFY_API_TOKEN is not configured. Set APIFY_API_TOKEN in .env for live X ingestion."
             ),
-            source_mode="LIVE" if SETTINGS.x_public_rss_url_template else "IMPORT",
+            source_mode="LIVE" if SETTINGS.apify_configured else "IMPORT",
         )
+    else:
+        if not SETTINGS.x_bearer_token:
+            base["x"] = ConnectorStatus(
+                platform="x",
+                provider="official",
+                state="DEGRADED" if SETTINGS.x_public_rss_url_template else "CREDENTIALS_REQUIRED",
+                detail=(
+                    "Configured permitted RSS/public bridge is available; official X API remains the preferred richer path."
+                    if SETTINGS.x_public_rss_url_template
+                    else "Official recent-search requires X developer access/credits. Replay/import remains available; optionally configure a permitted X_PUBLIC_RSS_URL_TEMPLATE."
+                ),
+                source_mode="LIVE" if SETTINGS.x_public_rss_url_template else "IMPORT",
+            )
+        else:
+            base["x"] = ConnectorStatus(
+                platform="x",
+                provider="official",
+                state="LIVE",
+                detail="Official X API v2 connector configured (pay-per-use).",
+                source_mode="LIVE",
+            )
 
     base["telegram"] = ConnectorStatus(
         platform="telegram",
@@ -225,7 +251,16 @@ def root() -> dict[str, str]:
 
 @app.get("/health", response_model=HealthResponse, tags=["system"])
 def health() -> HealthResponse:
-    return HealthResponse(status="ok", service="nexus-ai", version="0.4.0", environment=SETTINGS.nexus_env)
+    provider = (SETTINGS.x_provider or "apify").lower().strip()
+    apify_status = "configured" if SETTINGS.apify_configured else "not_configured"
+    return HealthResponse(
+        status="ok",
+        service="nexus-ai",
+        version="0.4.0",
+        environment=SETTINGS.nexus_env,
+        x_provider=provider,
+        apify_x=apify_status,
+    )
 
 
 @app.get("/api/connectors/status", tags=["connectors"])
@@ -275,16 +310,37 @@ async def workspace_search(request: WorkspaceSearchRequest):
     sources: dict[str, Any] = {}
 
     if request.enable_x:
-        if SETTINGS.x_bearer_token:
-            jobs.append(("x", "official_x_api_v2", x_recent_search(XSearchRequest(query=request.query, max_results=min(limit, 25)))))
-        elif _extract_x_urls(request.query) or SETTINGS.x_public_rss_url_template:
+        if _extract_x_urls(request.query) or SETTINGS.x_public_rss_url_template:
             jobs.append(("x", "x_public_bridge", x_public_bridge(request.query, "", min(limit, 25))))
         else:
-            sources["x"] = {
-                "state": "CREDENTIALS_REQUIRED",
-                "received": 0,
-                "detail": "Official X API bearer token required for live X ingestion.",
-            }
+            provider = (SETTINGS.x_provider or "apify").lower().strip()
+            if provider == "apify":
+                if SETTINGS.apify_configured:
+                    jobs.append(("x", f"apify_x:{SETTINGS.apify_x_actor_id}", x_search(XSearchRequest(query=request.query, max_results=min(limit, 25)))))
+                else:
+                    sources["x"] = {
+                        "state": "CREDENTIALS_REQUIRED",
+                        "provider": "apify",
+                        "received": 0,
+                        "detail": "Apify X provider selected, but APIFY_API_TOKEN is not configured in .env.",
+                    }
+            elif provider == "official":
+                if SETTINGS.x_bearer_token:
+                    jobs.append(("x", "official_x_api_v2", x_recent_search(XSearchRequest(query=request.query, max_results=min(limit, 25)))))
+                else:
+                    sources["x"] = {
+                        "state": "CREDENTIALS_REQUIRED",
+                        "provider": "official",
+                        "received": 0,
+                        "detail": "Official X API bearer token required for live X ingestion.",
+                    }
+            else:
+                sources["x"] = {
+                    "state": "ERROR",
+                    "provider": provider,
+                    "received": 0,
+                    "detail": f"Unsupported X_PROVIDER: '{provider}'.",
+                }
     if request.enable_youtube:
         if SETTINGS.youtube_api_key:
             jobs.append(("youtube", "youtube_data_api_v3", youtube_search(YouTubeSearchRequest(query=request.query, max_videos=min(limit, 10), max_comments_per_video=20))))
@@ -323,6 +379,7 @@ async def workspace_search(request: WorkspaceSearchRequest):
             search_query=request.query,
             search_session_id=session_id,
         )
+        collected.extend(stamped)
         detail = None
         if len(stamped) == 0:
             if platform == "telegram":
@@ -373,14 +430,61 @@ def ingest_replay(request: ReplayImportRequest):
     return ingest(_stamp_events(safe_events, connector="user_import"))
 
 
+@app.post("/api/social/x/search", response_model=ApifyXSearchResponse, tags=["social"])
+async def social_x_search(request: ApifyXSearchRequest):
+    """Production-ready Apify X/Twitter ingestion endpoint."""
+    provider = (SETTINGS.x_provider or "apify").lower().strip()
+    if provider != "apify":
+        raise HTTPException(
+            status_code=400,
+            detail=f"Active X_PROVIDER is '{provider}'. Set X_PROVIDER=apify in .env to use Apify X search.",
+        )
+    service = get_apify_x_service()
+    try:
+        raw_events = await service.search(
+            query=request.query,
+            max_results=request.max_results,
+            language=request.language,
+        )
+    except ConnectorError as exc:
+        raise connector_exception(exc) from exc
+
+    stamped = _stamp_events(
+        raw_events,
+        connector=f"apify_x:{service.actor_id}",
+        search_query=request.query,
+    )
+    ingest_result = ingest(stamped)
+
+    events_list = [STORE.get_event(eid) for eid in ingest_result["event_ids"]]
+    valid_events = [e for e in events_list if e is not None]
+
+    return ApifyXSearchResponse(
+        status="success",
+        platform="x",
+        provider="apify",
+        actor=service.actor_id,
+        query=request.query,
+        posts_fetched=len(raw_events),
+        posts_inserted=ingest_result["inserted"],
+        duplicates=ingest_result["duplicates"],
+        analysis_status="completed",
+        event_ids=ingest_result["event_ids"],
+        total_events=ingest_result["total_events"],
+        events=valid_events,
+    )
+
+
 @app.post("/api/connectors/x/search", tags=["connectors"])
 async def ingest_x(request: XSearchRequest):
     try:
-        events = await x_recent_search(request)
+        events = await x_search(request)
     except ConnectorError as exc:
         raise connector_exception(exc) from exc
-    result = ingest(_stamp_events(events, connector="official_x_api_v2", search_query=request.query))
-    result.update(platform="x", source_mode="LIVE", connector="official_x_api_v2")
+    provider = (SETTINGS.x_provider or "apify").lower().strip()
+    connector_label = f"apify_x:{SETTINGS.apify_x_actor_id}" if provider == "apify" else "official_x_api_v2"
+    result = ingest(_stamp_events(events, connector=connector_label, search_query=request.query))
+    result.update(platform="x", provider=provider, source_mode="LIVE", connector=connector_label)
     return result
 
 

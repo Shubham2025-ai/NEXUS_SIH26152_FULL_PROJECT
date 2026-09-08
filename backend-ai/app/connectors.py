@@ -34,16 +34,29 @@ def _parse_dt(value: str | None) -> datetime:
 
 
 def connector_statuses() -> list[ConnectorStatus]:
+    provider = (SETTINGS.x_provider or "apify").lower().strip()
+    if provider == "apify":
+        x_state = "READY" if SETTINGS.apify_configured else "CREDENTIALS_REQUIRED"
+        x_detail = (
+            f"Apify X Collector configured with actor '{SETTINGS.apify_x_actor_id}'."
+            if SETTINGS.apify_configured
+            else "Add APIFY_API_TOKEN in .env for live Apify X collection. Replay mode remains available."
+        )
+    else:
+        x_state = "READY" if SETTINGS.x_bearer_token else "CREDENTIALS_REQUIRED"
+        x_detail = (
+            "Official X API v2 connector configured. Calls are pay-per-use; hard per-run caps are enabled."
+            if SETTINGS.x_bearer_token
+            else "Add X_BEARER_TOKEN and X API credits for live recent-search. Replay mode remains available."
+        )
+
     statuses = [
         ConnectorStatus(
             platform="x",
-            state="READY" if SETTINGS.x_bearer_token else "CREDENTIALS_REQUIRED",
-            detail=(
-                "Official X API v2 connector configured. Calls are pay-per-use; hard per-run caps are enabled."
-                if SETTINGS.x_bearer_token
-                else "Add X_BEARER_TOKEN and X API credits for live recent-search. Replay mode remains available."
-            ),
-            source_mode="LIVE" if SETTINGS.x_bearer_token else None,
+            state=x_state,
+            detail=x_detail,
+            source_mode="LIVE" if (SETTINGS.apify_configured if provider == "apify" else bool(SETTINGS.x_bearer_token)) else None,
+            provider=provider,
         ),
         ConnectorStatus(
             platform="telegram",
@@ -182,6 +195,27 @@ async def x_recent_search(request: XSearchRequest) -> list[SocialEventIn]:
             if not next_token:
                 break
     return output
+
+
+async def x_search(request: XSearchRequest) -> list[SocialEventIn]:
+    """Route X search requests based on explicit X_PROVIDER configuration."""
+    from .apify_x_service import get_apify_x_service
+
+    provider = (SETTINGS.x_provider or "apify").lower().strip()
+    if provider == "apify":
+        service = get_apify_x_service()
+        return await service.search(
+            query=request.query,
+            max_results=request.max_results,
+            language=request.language,
+        )
+    elif provider == "official":
+        return await x_recent_search(request)
+    else:
+        raise ConnectorError(
+            f"Unsupported X_PROVIDER: '{SETTINGS.x_provider}'. Supported values are 'apify' and 'official'.",
+            "ERROR",
+        )
 
 
 async def telegram_poll(max_updates: int = 50) -> list[SocialEventIn]:
