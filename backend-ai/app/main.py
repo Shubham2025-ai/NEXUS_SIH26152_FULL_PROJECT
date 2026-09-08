@@ -456,8 +456,17 @@ async def social_x_search(request: ApifyXSearchRequest):
     )
     ingest_result = ingest(stamped)
 
-    events_list = [STORE.get_event(eid) for eid in ingest_result["event_ids"]]
-    valid_events = [e for e in events_list if e is not None]
+    valid_events: list[SocialEvent] = []
+    for eid in ingest_result["event_ids"]:
+        ev = STORE.get_event(eid)
+        if ev:
+            valid_events.append(ev)
+    if len(valid_events) < len(raw_events):
+        for raw_e in raw_events:
+            if not any(e.source_event_id == raw_e.source_event_id for e in valid_events):
+                stored = STORE.get_by_source_id(raw_e.platform, raw_e.source_event_id)
+                if stored:
+                    valid_events.append(stored)
 
     return ApifyXSearchResponse(
         status="success",

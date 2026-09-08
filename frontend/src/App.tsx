@@ -63,6 +63,7 @@ import demoData from './demoData.json';
 import PostExplorer from './PostExplorer';
 import ConnectionCenter from './ConnectionCenter';
 import FreeConnectorPanel from './FreeConnectorPanel';
+import XSearchModal from './XSearchModal';
 
 type ViewMode = 'input' | 'analyzing' | 'report' | 'deep_dive';
 type Tab = 'overview' | 'posts' | 'timeline' | 'trends' | 'narrative' | 'network' | 'demographics' | 'alerts' | 'evidence';
@@ -163,6 +164,7 @@ export default function App({ onNavigateHome }: { onNavigateHome?: () => void } 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [showXSearchModal, setShowXSearchModal] = useState(false);
   const importRef = useRef<HTMLInputElement>(null);
 
   // Backend Health State
@@ -1362,6 +1364,17 @@ export default function App({ onNavigateHome }: { onNavigateHome?: () => void } 
                     <Upload size={13} />
                     <span>Import JSON</span>
                   </button>
+
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    style={{ height: 32, fontSize: 11.5 }}
+                    disabled={loading}
+                    onClick={() => setShowXSearchModal(true)}
+                    title="Search X/Twitter using Apify or configured provider"
+                  >
+                    <span>𝕏 Search X</span>
+                  </button>
                 </div>
               </div>
 
@@ -1738,6 +1751,13 @@ export default function App({ onNavigateHome }: { onNavigateHome?: () => void } 
           )}
         </main>
       </div>
+
+      <XSearchModal
+        isOpen={showXSearchModal}
+        onClose={() => setShowXSearchModal(false)}
+        onRefreshWorkspace={() => void loadAll()}
+        defaultQuery={activeQuery || '("terrorism" OR "attack") lang:en'}
+      />
     </div>
   );
 }

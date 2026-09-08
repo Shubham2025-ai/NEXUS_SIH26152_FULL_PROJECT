@@ -32,6 +32,20 @@ def _query_terms(query: str) -> list[str]:
     return [term for term in terms if not (term in seen or seen.add(term))]
 
 
+def _term_matches(term: str, haystack: str, haystack_words: set[str]) -> bool:
+    term_clean = term.strip().lower().lstrip("#@")
+    if not term_clean:
+        return False
+    if " " not in term_clean:
+        if term_clean in haystack_words:
+            return True
+        pattern = r"(?<![\w\u0900-\u097f])" + re.escape(term_clean) + r"(?![\w\u0900-\u097f])"
+        return bool(re.search(pattern, haystack, flags=re.IGNORECASE))
+    else:
+        pattern = r"(?<![\w\u0900-\u097f])" + re.escape(term_clean) + r"(?![\w\u0900-\u097f])"
+        return bool(re.search(pattern, haystack, flags=re.IGNORECASE))
+
+
 def _matches_query(event: SocialEventIn, query: str) -> bool:
     terms = _query_terms(query)
     if not terms:
@@ -44,17 +58,29 @@ def _matches_query(event: SocialEventIn, query: str) -> bool:
         ]
     ).lower()
 
+    words = set(re.findall(r"[\w\u0900-\u0963\u0970-\u097f]+", haystack))
+
     # Distinguish substantive topic keywords (words / alphanumeric) from standalone numbers (e.g. years '2026')
     substantive = [t.lstrip("#@") for t in terms if not t.isdigit() and len(t.lstrip("#@")) >= 2]
     numeric = [t for t in terms if t.isdigit()]
 
-    if substantive:
-        # A post MUST match at least one substantive topic keyword.
-        # Matching ONLY a standalone 4-digit number like "2026" without topic keywords is a false positive.
-        return any(term in haystack for term in substantive)
+    if not substantive:
+        return any(_term_matches(t, haystack, words) for t in numeric) if numeric else True
+
+    matched_count = sum(1 for t in substantive if _term_matches(t, haystack, words))
+
+    # Precision requirement:
+    # 1 term -> 1 must match on word boundary
+    # 2 terms (e.g. "AI India") -> both 2 must match to prevent unrelated single-word hits
+    # >= 3 terms -> majority (at least 2, or (N+1)//2)
+    if len(substantive) == 1:
+        req = 1
+    elif len(substantive) == 2:
+        req = 2
     else:
-        # Pure numeric query (e.g. "2026")
-        return any(term in haystack for term in numeric)
+        req = min(len(substantive), max(2, (len(substantive) + 1) // 2))
+
+    return matched_count >= req
 
 
 def _parse_channel_spec(spec: str) -> tuple[list[str], str]:

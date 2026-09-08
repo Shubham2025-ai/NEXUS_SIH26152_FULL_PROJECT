@@ -4,6 +4,7 @@ import asyncio
 import logging
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
+import re
 from typing import Any
 from uuid import uuid4
 
@@ -14,6 +15,14 @@ from .connectors import ConnectorError
 from .schemas import SocialEventIn
 
 logger = logging.getLogger("nexus.apify_x")
+
+
+class ApifyAuthenticationError(ConnectorError):
+    """Raised when Apify authentication fails or token is missing."""
+
+
+class ApifyAPIError(ConnectorError):
+    """Raised when Apify API returns an error or fails."""
 
 
 def _parse_tweet_datetime(value: Any) -> datetime:
@@ -50,9 +59,9 @@ def _parse_tweet_datetime(value: Any) -> datetime:
 
 def normalize_apify_tweet(
     raw: dict[str, Any],
-    query: str,
-    run_id: str,
-    actor_id: str,
+    query: str = "",
+    run_id: str = "",
+    actor_id: str = "apify/x",
 ) -> SocialEventIn | None:
     """Normalize raw tweet data from Apify actors into canonical SocialEventIn.
 
@@ -131,36 +140,51 @@ def normalize_apify_tweet(
 
     # Resolve engagement
     likes = int(raw.get("likeCount") or raw.get("likes") or raw.get("favorite_count") or 0)
-    reposts = int(raw.get("retweetCount") or raw.get("retweets") or 0)
-    replies = int(raw.get("replyCount") or raw.get("replies") or 0)
-    quotes = int(raw.get("quoteCount") or raw.get("quotes") or 0)
-    views = raw.get("viewCount") or raw.get("views")
+    reposts = int(raw.get("retweetCount") or raw.get("retweets") or raw.get("retweet_count") or 0)
+    replies = int(raw.get("replyCount") or raw.get("replies") or raw.get("reply_count") or 0)
+    quotes = int(raw.get("quoteCount") or raw.get("quotes") or raw.get("quote_count") or 0)
+    views = raw.get("viewCount") or raw.get("views") or raw.get("views_count")
 
     # Extract entities
     entities = raw.get("entities") or {}
     mentions: list[str] = []
-    if isinstance(entities, dict) and "mentions" in entities:
-        for m in entities.get("mentions", []):
-            if isinstance(m, dict) and m.get("username"):
-                mentions.append(m["username"].lstrip("@"))
+    if isinstance(entities, dict):
+        raw_mentions = entities.get("mentions") or entities.get("user_mentions") or []
+        for m in raw_mentions:
+            if isinstance(m, dict):
+                u = m.get("username") or m.get("screen_name") or ""
+                if u:
+                    mentions.append(u.lstrip("@").lower())
             elif isinstance(m, str):
-                mentions.append(m.lstrip("@"))
+                mentions.append(m.lstrip("@").lower())
 
     hashtags: list[str] = []
-    if isinstance(entities, dict) and "hashtags" in entities:
-        for h in entities.get("hashtags", []):
-            if isinstance(h, dict) and h.get("tag"):
-                hashtags.append(h["tag"].lower().lstrip("#"))
+    if isinstance(entities, dict):
+        raw_hashtags = entities.get("hashtags") or []
+        for h in raw_hashtags:
+            if isinstance(h, dict):
+                tag = h.get("tag") or h.get("text") or ""
+                if tag:
+                    hashtags.append(tag.lower().lstrip("#"))
             elif isinstance(h, str):
                 hashtags.append(h.lower().lstrip("#"))
 
     urls: list[str] = []
-    if isinstance(entities, dict) and "urls" in entities:
-        for u in entities.get("urls", []):
+    if isinstance(entities, dict):
+        raw_urls = entities.get("urls") or []
+        for u in raw_urls:
             if isinstance(u, dict) and (u.get("expanded_url") or u.get("url")):
                 urls.append(u.get("expanded_url") or u["url"])
             elif isinstance(u, str):
                 urls.append(u)
+
+    # Fallback to regex extraction if entities list was absent or empty
+    if not hashtags:
+        hashtags = [t.lower() for t in re.findall(r"#(\w+)", text)]
+    if not mentions:
+        mentions = [m.lower() for m in re.findall(r"@(\w+)", text)]
+    if not urls:
+        urls = re.findall(r"https?://\S+", text)
 
     # Event type
     is_retweet = bool(raw.get("isRetweet") or raw.get("is_retweet") or text.startswith("RT @"))
@@ -186,8 +210,8 @@ def normalize_apify_tweet(
         platform="x",
         source_event_id=post_id,
         event_type=event_type,
-        author_platform_id=author_id or None,
-        author_display=username or display_name,
+        author_platform_id=author_id or username or None,
+        author_display=display_name or username,
         text=text,
         language=str(lang) if lang else None,
         created_at=created_at,
@@ -212,8 +236,17 @@ def normalize_apify_tweet(
 class ApifyXService:
     """Production-ready X/Twitter collector service using Apify."""
 
-    def __init__(self) -> None:
+    def __init__(self, api_token: str | None = None) -> None:
         self.settings = get_settings()
+        self._override_token = api_token
+
+    @property
+    def token(self) -> str:
+        return (self._override_token if self._override_token is not None else self.settings.apify_api_token).strip()
+
+    @property
+    def is_configured(self) -> bool:
+        return bool(self.token)
 
     @property
     def actor_id(self) -> str:
@@ -224,12 +257,28 @@ class ApifyXService:
         return self.actor_id.replace("/", "~")
 
     def _validate_credentials(self) -> None:
-        token = self.settings.apify_api_token.strip()
-        if not token:
-            raise ConnectorError(
+        if not self.token:
+            raise ApifyAuthenticationError(
                 "APIFY_API_TOKEN is not configured. Set APIFY_API_TOKEN in your environment or .env file to enable live Apify X collection.",
                 "CREDENTIALS_REQUIRED",
             )
+
+    def build_query(
+        self,
+        query: str,
+        lang: str | None = None,
+        since: str | None = None,
+        until: str | None = None,
+    ) -> str:
+        """Compose clean X/Twitter search query with optional filters."""
+        parts = [query.strip()]
+        if lang:
+            parts.append(f"lang:{lang.strip()}")
+        if since:
+            parts.append(f"since:{since.strip()}")
+        if until:
+            parts.append(f"until:{until.strip()}")
+        return " ".join(filter(None, parts))
 
     def build_actor_input(
         self,
@@ -255,6 +304,18 @@ class ApifyXService:
             payload["lang"] = language
         return payload
 
+    async def run_search(
+        self,
+        query: str,
+        max_items: int = 20,
+        lang: str | None = None,
+        since: str | None = None,
+        until: str | None = None,
+    ) -> list[SocialEventIn]:
+        """Convenience runner applying query building before search."""
+        combined_query = self.build_query(query, lang=lang, since=since, until=until)
+        return await self.search(combined_query, max_results=max_items, language=lang)
+
     async def search(
         self,
         query: str,
@@ -264,7 +325,7 @@ class ApifyXService:
         """Collect X posts via Apify, wait for completion, and return normalized events."""
         self._validate_credentials()
 
-        token = self.settings.apify_api_token.strip()
+        token = self.token
         actor = self.actor_id
         actor_slug = self.actor_slug
         limit = max(1, min(max_results, self.settings.apify_max_items_per_run, 100))
@@ -312,7 +373,7 @@ class ApifyXService:
 
             # Handle HTTP errors
             if response.status_code == 401:
-                raise ConnectorError(
+                raise ApifyAuthenticationError(
                     "Invalid or expired APIFY_API_TOKEN. Verify your token in Apify Console.",
                     "CREDENTIALS_REQUIRED",
                 )
@@ -332,13 +393,13 @@ class ApifyXService:
                     "NO_CREDITS" if response.status_code == 402 else "PERMISSION_REQUIRED",
                 )
             if response.status_code >= 500:
-                raise ConnectorError(
-                    f"Apify service temporarily unavailable ({response.status_code}).",
+                raise ApifyAPIError(
+                    f"Apify run failed with HTTP {response.status_code}: {response.text[:200]}",
                     "DEGRADED",
                 )
             if response.status_code >= 400:
                 err_detail = response.text[:400]
-                raise ConnectorError(f"Apify API error {response.status_code}: {err_detail}", "ERROR")
+                raise ApifyAPIError(f"Apify API error {response.status_code}: {err_detail}", "ERROR")
 
             # Parse dataset items
             try:

@@ -26,6 +26,14 @@ def test_monitored_telegram_posts_are_filtered_by_active_query():
     assert _matches_query(event("Breaking update about AI regulation in India"), "AI regulation")
     assert not _matches_query(event("Weekend cricket match result"), "AI regulation")
     assert _matches_query(event("Follow #RiverLinkUpdate for verified information"), "#RiverLinkUpdate")
+    # Word-boundary check: "painful" contains "ai", but must NOT match query "AI"
+    assert not _matches_query(event("Gram Wallet avoids painful migrations."), "AI")
+    # Multi-term precision: Post about AI in Kazakhstan must NOT match "AI India"
+    assert not _matches_query(event("Olympiad in AI finished in Astana, Kazakhstan."), "AI India")
+    # Genuine match: mentions both AI and India
+    assert _matches_query(event("The National AI Mission in India announces new funding."), "AI India")
+    # Numeric false positive guard: standalone year 2026 cannot match multi-term topic query without topic keywords
+    assert not _matches_query(event("Prizes awarded for the 2026 Olympiad in Informatics."), "TCS NQT 2026")
 
 
 def test_workspace_explicit_telegram_target_is_bound_to_query():

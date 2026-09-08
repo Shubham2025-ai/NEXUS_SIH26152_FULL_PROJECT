@@ -11,7 +11,7 @@ import {
 } from 'lucide-react';
 import { API_BASE } from './api';
 
-type ActionName = 'telegram' | 'youtube' | 'bluesky' | 'reddit' | 'mastodon' | 'instagram' | 'instagramTag' | 'x' | 'mix' | 'verify';
+type ActionName = 'telegram' | 'youtube' | 'bluesky' | 'reddit' | 'mastodon' | 'instagram' | 'instagramTag' | 'x' | 'apify_x' | 'mix' | 'verify';
 
 const X_POST_RE = /https?:\/\/(?:www\.)?(?:x\.com|twitter\.com)\/[A-Za-z0-9_]+\/status\/\d+/i;
 
@@ -221,6 +221,16 @@ export default function FreeConnectorPanel() {
             >
               {busy === 'x' ? <Loader2 size={11} className="animate-spin" /> : null}
               + X Bridge
+            </button>
+            <button
+              type="button"
+              className="fsl-btn fsl-btn-subtle"
+              disabled={!!busy || !query.trim()}
+              onClick={() => run('apify_x', () => post('/api/social/x/search', { query: query.trim(), max_results: 20 }))}
+              title="Ingest live X posts via Apify Collector"
+            >
+              {busy === 'apify_x' ? <Loader2 size={11} className="animate-spin" /> : null}
+              + X (Apify)
             </button>
           </div>
         </div>

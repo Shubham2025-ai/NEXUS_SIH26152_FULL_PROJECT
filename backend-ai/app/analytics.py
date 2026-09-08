@@ -551,23 +551,40 @@ def _normalize_region(raw: str | None) -> str:
     if not raw or not raw.strip():
         return "unknown"
     lower = raw.lower().strip()
-    if lower in {"west", "west india", "western india"} or any(t in lower for t in ["mumbai", "pune", "maharashtra", "gujarat", "ahmedabad", "surat", "goa", "nagpur"]):
+    words = set(re.findall(r"\b[a-z\u0900-\u097f]+\b", lower))
+
+    west_terms = {"mumbai", "pune", "maharashtra", "gujarat", "ahmedabad", "surat", "goa", "nagpur"}
+    if lower in {"west", "west india", "western india"} or bool(words & west_terms):
         return "India - West"
-    if lower in {"north", "north india", "northern india"} or any(t in lower for t in ["delhi", "ncr", "noida", "gurgaon", "punjab", "haryana", "jaipur", "rajasthan", "lucknow", "uttar pradesh", "chandigarh", "shimla", "dehradun"]):
+
+    north_terms = {"delhi", "ncr", "noida", "gurgaon", "punjab", "haryana", "jaipur", "rajasthan", "lucknow", "uttar pradesh", "chandigarh", "shimla", "dehradun"}
+    if lower in {"north", "north india", "northern india"} or bool(words & north_terms):
         return "India - North"
-    if lower in {"south", "south india", "southern india"} or any(t in lower for t in ["bengaluru", "bangalore", "karnataka", "hyderabad", "telangana", "chennai", "tamil nadu", "kerala", "kochi", "andhra"]):
+
+    south_terms = {"bengaluru", "bangalore", "karnataka", "hyderabad", "telangana", "chennai", "tamil nadu", "kerala", "kochi", "andhra"}
+    if lower in {"south", "south india", "southern india"} or "tamil nadu" in lower or bool(words & south_terms):
         return "India - South"
-    if lower in {"central", "east", "eastern india"} or any(t in lower for t in ["kolkata", "west bengal", "bihar", "patna", "odisha", "jharkhand", "assam", "bhopal", "indore", "madhya pradesh"]):
+
+    east_terms = {"kolkata", "west bengal", "bihar", "patna", "odisha", "jharkhand", "assam", "bhopal", "indore", "madhya pradesh"}
+    if lower in {"central", "east", "eastern india"} or "west bengal" in lower or "madhya pradesh" in lower or bool(words & east_terms):
         return "India - East / Central"
-    if any(t in lower for t in ["india", "bharat", "in"]):
+
+    if words & {"india", "bharat", "hindustan", "indian", "desi"}:
         return "India - Metro / National"
-    if any(t in lower for t in ["usa", "united states", "america", "nyc", "new york", "california", "san francisco", "texas", "canada", "toronto"]):
+
+    na_terms = {"usa", "america", "nyc", "california", "texas", "canada", "toronto"}
+    if any(t in lower for t in ["united states", "new york", "san francisco"]) or bool(words & na_terms):
         return "North America"
-    if any(t in lower for t in ["uk", "london", "england", "germany", "berlin", "france", "paris", "europe", "amsterdam"]):
+
+    europe_terms = {"uk", "london", "england", "germany", "berlin", "france", "paris", "europe", "amsterdam", "russia", "moscow"}
+    if bool(words & europe_terms):
         return "Europe"
-    if any(t in lower for t in ["singapore", "tokyo", "japan", "australia", "sydney", "dubai", "uae"]):
+
+    apac_me_terms = {"singapore", "tokyo", "japan", "australia", "sydney", "dubai", "uae", "kazakhstan", "astana"}
+    if bool(words & apac_me_terms):
         return "Asia-Pacific & Middle East"
-    return raw.strip().title() if len(raw.strip()) >= 3 else "unknown"
+
+    return "unknown"
 
 
 def _infer_profession(text: str, bio: str, display: str) -> str | None:

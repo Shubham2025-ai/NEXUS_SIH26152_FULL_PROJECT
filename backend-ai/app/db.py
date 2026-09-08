@@ -195,6 +195,14 @@ class EventStore:
             row = conn.execute("SELECT * FROM events WHERE id = ?", (event_id,)).fetchone()
         return self._row_to_event(row) if row else None
 
+    def get_by_source_id(self, platform: str, source_event_id: str) -> SocialEvent | None:
+        with self.connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM events WHERE platform = ? AND source_event_id = ?",
+                (platform, source_event_id),
+            ).fetchone()
+        return self._row_to_event(row) if row else None
+
     def count(self) -> int:
         with self.connect() as conn:
             row = conn.execute("SELECT COUNT(*) AS c FROM events").fetchone()
