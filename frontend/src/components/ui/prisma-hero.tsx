@@ -233,7 +233,7 @@ export const PrismaHero = ({ onNavigateDashboard, className = "" }: PrismaHeroPr
                   className="font-medium leading-[0.85] tracking-[-0.07em] text-[24vw] sm:text-[22vw] md:text-[20vw] lg:text-[18vw] xl:text-[17vw] select-none"
                   style={{ color: "#E1E0CC" }}
                 >
-                  <WordsPullUp text="Prisma" showAsterisk />
+                  <WordsPullUp text="NEXUS" showAsterisk />
                 </h1>
               </div>
 
@@ -246,7 +246,7 @@ export const PrismaHero = ({ onNavigateDashboard, className = "" }: PrismaHeroPr
                   className="text-xs text-primary/80 sm:text-sm md:text-base max-w-lg"
                   style={{ lineHeight: 1.35 }}
                 >
-                  Prisma is a worldwide network of visual artists, filmmakers and storytellers bound not by place, status or labels but by passion and hunger to unlock potential through our unique perspectives.
+                  NEXUS is a worldwide network of visual artists, filmmakers and storytellers bound not by place, status or labels but by passion and hunger to unlock potential through our unique perspectives.
                 </motion.p>
 
                 <motion.button
