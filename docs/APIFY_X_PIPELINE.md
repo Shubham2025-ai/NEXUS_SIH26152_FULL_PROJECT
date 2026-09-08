@@ -49,7 +49,7 @@ The pipeline is controlled through environment variables defined in `.env` (deri
 |---|---|---|---|
 | `X_PROVIDER` | `str` | `"official"` | Explicit provider selector: `"apify"` or `"official"`. Set to `"apify"` to route collection through Apify. |
 | `APIFY_API_TOKEN` | `str` | `""` | Apify API token (Bearer token). Kept confidential; never exposed in logs or API responses. |
-| `APIFY_X_ACTOR_ID` | `str` | `"apidojo/tweet-scraper"` | The Apify Actor ID. Verified schema compatible with `apidojo/tweet-scraper`, `kaitoeasyapi/twitter-x-data-tweet-scraper`, etc. |
+| `APIFY_X_ACTOR_ID` | `str` | `"api-ninja/x-twitter-advanced-search"` | The Apify Actor ID. Default `api-ninja/x-twitter-advanced-search` (works on free/standard plans); `apidojo/tweet-scraper` (for accounts with paid actor rentals). |
 | `APIFY_TIMEOUT_SECONDS` | `int` | `60` | HTTP timeout (in seconds) for synchronous Apify actor run and dataset retrieval. |
 | `APIFY_MAX_ITEMS_PER_RUN` | `int` | `50` | Maximum number of posts fetched per search request to manage Apify credit usage. |
 
@@ -57,7 +57,7 @@ The pipeline is controlled through environment variables defined in `.env` (deri
 ```ini
 X_PROVIDER=apify
 APIFY_API_TOKEN=apify_api_YOUR_ACTUAL_TOKEN_HERE
-APIFY_X_ACTOR_ID=apidojo/tweet-scraper
+APIFY_X_ACTOR_ID=api-ninja/x-twitter-advanced-search
 APIFY_TIMEOUT_SECONDS=60
 APIFY_MAX_ITEMS_PER_RUN=50
 ```
