@@ -118,7 +118,7 @@ class WorkspaceSearchRequest(BaseModel):
     """
 
     query: str = Field(min_length=1, max_length=300)
-    reset: bool = True
+    reset: bool = False
     limit_per_source: int = Field(default=15, ge=1, le=40)
     enable_x: bool = True
     enable_telegram: bool = True

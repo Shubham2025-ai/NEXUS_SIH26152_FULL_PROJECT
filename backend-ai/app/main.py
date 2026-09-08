@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from contextlib import asynccontextmanager
 import csv
 import io
 from datetime import datetime, timezone
@@ -63,10 +64,26 @@ from .schemas import (
 SETTINGS = get_settings()
 STORE = get_store()
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    if SETTINGS.nexus_collector_autostart:
+        try:
+            await COLLECTOR.start(CollectorStartRequest(query="AI", interval_seconds=30))
+        except Exception:
+            pass
+    yield
+    try:
+        await COLLECTOR.stop()
+    except Exception:
+        pass
+
+
 app = FastAPI(
     title="NEXUS — Narrative & Influence Intelligence",
     description="SIH26152 social-media analytics engine with evidence-aware narrative lineage and free/public-source fallbacks.",
     version="0.4.0",
+    lifespan=lifespan,
 )
 app.add_middleware(
     CORSMiddleware,
@@ -486,8 +503,18 @@ def api_overview():
 
 
 @app.get("/api/timeline", tags=["analytics"])
-def api_timeline(minutes: int = Query(default=15, ge=5, le=360)):
-    return {"bucket_minutes": minutes, "points": timeline(STORE.list_events(limit=5000), minutes)}
+def api_timeline(
+    minutes: int = Query(default=15, ge=5, le=360),
+    platform: str | None = None,
+    since: datetime | None = None,
+    until: datetime | None = None,
+):
+    events = STORE.list_events(limit=5000, platform=platform, since=since, until=until)
+    return {
+        "bucket_minutes": minutes,
+        "platform_filter": platform,
+        "points": timeline(events, minutes),
+    }
 
 
 @app.get("/api/trends", tags=["analytics"])
@@ -595,6 +622,8 @@ def api_events(
     limit: int = Query(default=250, ge=1, le=2000),
     platform: str | None = None,
     narrative_id: str | None = None,
+    since: datetime | None = None,
+    until: datetime | None = None,
     newest_first: bool = False,
 ):
     return {
@@ -602,6 +631,8 @@ def api_events(
             limit=limit,
             platform=platform,
             narrative_id=narrative_id,
+            since=since,
+            until=until,
             newest_first=newest_first,
         )
     }

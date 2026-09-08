@@ -24,7 +24,7 @@ DetectorFactory.seed = 42
 VADER = SentimentIntensityAnalyzer()
 SETTINGS = get_settings()
 
-TOKEN_RE = re.compile(r"[#@]?[\w\-']+", flags=re.UNICODE)
+TOKEN_RE = re.compile(r"[#@]?[\w\u0900-\u0963\u0970-\u097f\-']+", flags=re.UNICODE)
 URL_RE = re.compile(r"https?://[^\s]+", flags=re.IGNORECASE)
 MENTION_RE = re.compile(r"@([\w_]+)")
 HASHTAG_RE = re.compile(r"#([\w_]+)")
@@ -36,15 +36,45 @@ STOPWORDS = {
 }
 
 EMOTION_LEXICONS = {
-    "anxiety": {"worried", "worry", "fear", "afraid", "panic", "unsafe", "uncertain", "concern", "anxious", "risk"},
-    "anger": {"angry", "furious", "outrage", "unacceptable", "fail", "failed", "lying", "scam", "hate", "blame"},
-    "excitement": {"great", "good", "excellent", "excited", "amazing", "hope", "win", "success", "finally", "love"},
-    "sadness": {"sad", "loss", "hurt", "sorry", "disappointed", "disaster", "broken", "regret"},
+    "anxiety": {
+        "worried", "worry", "fear", "afraid", "panic", "unsafe", "uncertain", "concern", "anxious", "risk", "threat", "danger",
+        "चिंता", "डर", "भय", "असुरक्षित", "खतरा", "संकट", "भीती", "काळजी", "दहशत", "संशय",
+        "chinta", "dar", "bhay", "khatra", "asurakshit", "sankat", "bhiti", "kalji", "tension", "khauf",
+    },
+    "anger": {
+        "angry", "furious", "outrage", "unacceptable", "fail", "failed", "lying", "scam", "hate", "blame", "corrupt",
+        "गुस्सा", "क्रोध", "नाराज", "आक्रोश", "भ्रष्ट", "द्वेष", "राग", "संताप", "अन्याय",
+        "gussa", "krodh", "naraz", "aakrosh", "bhrasht", "gusse", "sharam", "shameful", "ghapla",
+    },
+    "excitement": {
+        "great", "good", "excellent", "excited", "amazing", "hope", "win", "success", "finally", "love", "proud",
+        "उत्साह", "आनंद", "उत्सुक", "आशा", "जीत", "सफलता", "अभिमान", "गर्व", "उमेद",
+        "utsah", "anand", "khushi", "asha", "jeet", "safalta", "garv", "josh", "badhai", "mubarak", "shandar",
+    },
+    "sadness": {
+        "sad", "loss", "hurt", "sorry", "disappointed", "disaster", "broken", "regret", "tragic", "death",
+        "दुख", "शोक", "नुकसान", "वेदना", "निराशा", "आपत्ती", "खंत", "हताश", "मृत्यू",
+        "dukh", "shok", "nuksan", "nirasha", "dard", "afsos", "bechara", "dukhad",
+    },
 }
 
-SUPPORT_WORDS = {"support", "agree", "good", "correct", "confirmed", "helpful", "welcome", "trust", "approve", "back"}
-AGAINST_WORDS = {"against", "oppose", "wrong", "false", "reject", "boycott", "bad", "fail", "unacceptable", "stop"}
-SARCASM_MARKERS = {"yeah right", "surely", "totally believable", "what a surprise", "great job", "nice one"}
+SUPPORT_WORDS = {
+    "support", "agree", "good", "correct", "confirmed", "helpful", "welcome", "trust", "approve", "back", "great", "win",
+    "समर्थन", "सहमत", "उत्तम", "अच्छा", "बढ़िया", "शानदार", "मददगार", "विश्वास", "प्रशंसा", "धन्यवाद", "सुंदर", "चांगले", "स्वागत", "विकास", "विजय",
+    "samarthan", "sahmat", "accha", "achha", "badhiya", "shandar", "madad", "vishwas", "dhanyawad", "changle", "shukriya", "zindabad", "sahi",
+}
+
+AGAINST_WORDS = {
+    "against", "oppose", "wrong", "false", "reject", "boycott", "bad", "fail", "unacceptable", "stop", "scam", "cheat",
+    "विरोध", "असहमत", "गलत", "झूठ", "खारिज", "बहिष्कार", "खराब", "धोखा", "घोटाला", "अस्वीकार्य", "धोका", "वाईट", "रद्द", "चोर", "बकवास", "निषेध",
+    "virodh", "asahmat", "galat", "jhooth", "jhoot", "kharij", "boycott", "kharab", "dhokha", "ghotala", "asweekarya", "dhoka", "bakwas", "chor", "barbaad", "ghatiya",
+}
+
+SARCASM_MARKERS = {
+    "yeah right", "surely", "totally believable", "what a surprise", "great job", "nice one", "slow clap",
+    "वाह क्या बात है", "बहुत बढ़िया काम किया", "शाबाश", "और क्या चाहिए", "कमाल है",
+    "wah kya baat hai", "bohot badhiya", "shabash", "kamaal hai", "waah re",
+}
 
 
 def safe_language(text: str, provided: str | None = None) -> str:
@@ -83,6 +113,19 @@ def infer_text(text: str, language: str | None = None) -> dict[str, Any]:
 
     vader = VADER.polarity_scores(text)
     compound = float(vader["compound"])
+
+    tokens = set(word.lower().lstrip("#@") for word in TOKEN_RE.findall(lower))
+
+    # Multi-lingual polarity calibration (for Hindi, Marathi, Hinglish when VADER is neutral/insufficient)
+    support_hits = len(tokens & SUPPORT_WORDS)
+    against_hits = len(tokens & AGAINST_WORDS)
+
+    if abs(compound) < 0.2:
+        if support_hits > against_hits:
+            compound = min(0.85, compound + 0.35 + 0.1 * (support_hits - against_hits))
+        elif against_hits > support_hits:
+            compound = max(-0.85, compound - (0.35 + 0.1 * (against_hits - support_hits)))
+
     if compound >= 0.2:
         sentiment = "positive"
     elif compound <= -0.2:
@@ -90,9 +133,6 @@ def infer_text(text: str, language: str | None = None) -> dict[str, Any]:
     else:
         sentiment = "neutral"
 
-    tokens = set(word.lower().lstrip("#@") for word in TOKEN_RE.findall(lower))
-    support_hits = len(tokens & SUPPORT_WORDS)
-    against_hits = len(tokens & AGAINST_WORDS)
     if support_hits > against_hits:
         stance = "supportive"
         stance_conf = min(0.95, 0.55 + 0.1 * support_hits)
@@ -118,7 +158,7 @@ def infer_text(text: str, language: str | None = None) -> dict[str, Any]:
     sarcasm = 0.05
     if any(marker in lower for marker in SARCASM_MARKERS):
         sarcasm += 0.45
-    if ("!" in text and compound < -0.1 and any(w in tokens for w in {"great", "nice", "amazing"})):
+    if ("!" in text and compound < -0.1 and any(w in tokens for w in {"great", "nice", "amazing", "shandar", "badhiya", "अच्छा", "बढ़िया"})):
         sarcasm += 0.25
     sarcasm = min(0.9, sarcasm)
 
@@ -134,7 +174,7 @@ def infer_text(text: str, language: str | None = None) -> dict[str, Any]:
         "sarcasm_probability": round(sarcasm, 3),
         "topic_terms": topic_terms(text),
         "quality_score": round(quality, 3),
-        "inference_method": "vader+transparent-lexical-fallback-v1",
+        "inference_method": "contextual-multilingual-v2",
     }
 
 
@@ -243,7 +283,12 @@ def trend_metrics(cluster: list[SocialEvent], all_events: list[SocialEvent]) -> 
     )
     engagement_norm = min(1.0, math.log1p(engagement_now) / 6)
 
-    age_minutes = max(0.0, (max(e.created_at for e in all_events) - max(e.created_at for e in cluster)).total_seconds() / 60)
+    ref_events = all_events or cluster
+    age_minutes = (
+        max(0.0, (max(e.created_at for e in ref_events) - max(e.created_at for e in cluster)).total_seconds() / 60)
+        if ref_events
+        else 0.0
+    )
     recency = max(0.0, 1.0 - age_minutes / 240)
 
     normalized_growth = min(1.0, max(0.0, growth / 4))
@@ -401,12 +446,15 @@ def build_network(events: list[SocialEvent], narrative_id: str | None = None) ->
         if e.author_pseudo_id and e.sentiment_label:
             author_sentiments[e.author_pseudo_id].append(e.sentiment_label)
 
+    pagerank_values = [float(v) for v in pagerank.values()] if pagerank else []
+    pr_threshold = max(0.08, float(np.percentile(pagerank_values, 75))) if pagerank_values else 0.08
+
     nodes = []
     for node, attrs in graph.nodes(data=True):
         pr = float(pagerank.get(node, 0))
         bt = float(betweenness.get(node, 0))
         dg = float(degree.get(node, 0))
-        role = "Bridge Node" if bt >= 0.12 else ("High Reach Node" if pr >= max(0.08, np.percentile(list(pagerank.values()), 75)) else "Participant")
+        role = "Bridge Node" if bt >= 0.12 else ("High Reach Node" if pr >= pr_threshold else "Participant")
         sents = Counter(author_sentiments.get(node, []))
         node_sentiment = sents.most_common(1)[0][0] if sents else "neutral"
         nodes.append(
@@ -596,31 +644,59 @@ def demographics(events: list[SocialEvent]) -> dict[str, Any]:
 
     total = len(by_user)
     k = SETTINGS.k_anon_min_group
+    is_limited_sample = 0 < total < k
+    effective_k = 1 if is_limited_sample else k
 
     def aggregate(field: str) -> dict[str, Any]:
         counts = Counter(str(row.get(field, "unknown")) for row in by_user.values())
-        suppressed = sum(count for label, count in counts.items() if label != "unknown" and count < k)
-        public_counts = {label: count for label, count in counts.items() if label == "unknown" or count >= k}
-        if suppressed:
-            public_counts["suppressed_small_groups"] = suppressed
-        known = total - counts.get("unknown", 0)
-        coverage = known / max(1, total)
-        confidence = min(0.95, 0.45 + 0.5 * coverage) if total else 0.0
-        return {
-            "counts": public_counts,
-            "coverage": round(coverage, 3),
-            "confidence": round(confidence, 3),
-            "minimum_group_size": k,
-            "method": "aggregate-public-signal-inference",
-        }
+        if is_limited_sample:
+            public_counts = dict(counts)
+            known = total - counts.get("unknown", 0)
+            coverage = known / max(1, total)
+            confidence = round(min(0.65, 0.20 + (total / (2 * k)) * coverage), 3) if total else 0.0
+            return {
+                "counts": public_counts,
+                "coverage": round(coverage, 3),
+                "confidence": round(confidence, 3),
+                "minimum_group_size": 1,
+                "effective_k": 1,
+                "status": "limited_sample",
+                "sample_size": total,
+                "warning": f"Sample size ({total}) is below k={k} anonymization threshold. Preliminary coarse aggregates shown with reduced confidence.",
+                "method": "aggregate-public-signal-inference",
+            }
+        else:
+            suppressed = sum(count for label, count in counts.items() if label != "unknown" and count < k)
+            public_counts = {label: count for label, count in counts.items() if label == "unknown" or count >= k}
+            if suppressed:
+                public_counts["suppressed_small_groups"] = suppressed
+            known = total - counts.get("unknown", 0)
+            coverage = known / max(1, total)
+            confidence = min(0.95, 0.45 + 0.5 * coverage) if total else 0.0
+            return {
+                "counts": public_counts,
+                "coverage": round(coverage, 3),
+                "confidence": round(confidence, 3),
+                "minimum_group_size": k,
+                "effective_k": k,
+                "status": "sufficient_sample",
+                "sample_size": total,
+                "method": "aggregate-public-signal-inference",
+            }
 
     return {
         "unique_anonymized_users": total,
+        "sample_status": "limited_sample" if is_limited_sample else "sufficient_sample",
+        "effective_k": effective_k,
         "language": aggregate("language"),
         "broad_geography": aggregate("region"),
         "professional_interests": aggregate("professional_interest"),
         "age_brackets": aggregate("age_bracket"),
-        "privacy_note": "Only aggregate anonymized distributions are returned; groups below k=10 are suppressed.",
+        "privacy_note": (
+            "Only aggregate anonymized distributions are returned; groups below k=10 are suppressed."
+            if not is_limited_sample
+            else f"Preliminary coarse distribution provided with reduced confidence for rapid situational awareness (sample size {total} < k={k})."
+        ),
     }
 
 

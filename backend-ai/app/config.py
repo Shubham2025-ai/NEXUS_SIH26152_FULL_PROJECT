@@ -18,6 +18,8 @@ class Settings(BaseSettings):
 
     nexus_env: str = "demo"
     nexus_db_url: str = "sqlite:///./nexus.db"
+    database_url: str = ""
+    nexus_collector_autostart: bool = False
     nexus_api_host: str = "127.0.0.1"
     nexus_api_port: int = 8000
     nexus_cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173,http://localhost:5174,http://127.0.0.1:5174,http://localhost:3000,http://127.0.0.1:3000,http://localhost:4173,http://127.0.0.1:4173,http://localhost:8080,https://frontend-six-wine-24.vercel.app"
@@ -92,11 +94,21 @@ class Settings(BaseSettings):
         return values[:12]
 
     @property
+    def effective_db_url(self) -> str:
+        return self.database_url.strip() if self.database_url and self.database_url.strip() else self.nexus_db_url
+
+    @property
+    def is_postgres(self) -> bool:
+        url = self.effective_db_url.lower()
+        return url.startswith("postgres://") or url.startswith("postgresql://")
+
+    @property
     def sqlite_path(self) -> Path:
         prefix = "sqlite:///"
-        if not self.nexus_db_url.startswith(prefix):
+        db_url = self.effective_db_url
+        if not db_url.startswith(prefix):
             return ROOT_DIR / "nexus.db"
-        raw = self.nexus_db_url[len(prefix) :]
+        raw = db_url[len(prefix) :]
         path = Path(raw)
         if not path.is_absolute():
             path = ROOT_DIR / path

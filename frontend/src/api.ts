@@ -220,11 +220,17 @@ export interface DemographicSlice {
   coverage: number;
   confidence: number;
   minimum_group_size: number;
+  effective_k?: number;
+  status?: string;
+  sample_size?: number;
+  warning?: string;
   method: string;
 }
 
 export interface DemographicsResponse {
   unique_anonymized_users: number;
+  sample_status?: 'sufficient_sample' | 'limited_sample';
+  effective_k?: number;
   language: DemographicSlice;
   broad_geography: DemographicSlice;
   professional_interests: DemographicSlice;
@@ -339,7 +345,13 @@ export const api = {
   health: () => request<{ status: string }>('/health'),
   connectorStatus: () => request<{ connectors: ConnectorStatus[] }>('/api/connectors/status'),
   overview: () => request<Overview>('/api/overview'),
-  timeline: (minutes: number = 15) => request<{ bucket_minutes: number; points: TimelinePoint[] }>(`/api/timeline?minutes=${minutes}`),
+  timeline: (minutes: number = 15, platform?: string, since?: string, until?: string) => {
+    const params = new URLSearchParams({ minutes: String(minutes) });
+    if (platform) params.append('platform', platform);
+    if (since) params.append('since', since);
+    if (until) params.append('until', until);
+    return request<{ bucket_minutes: number; platform_filter?: string | null; points: TimelinePoint[] }>(`/api/timeline?${params.toString()}`);
+  },
   trends: () => request<{ narratives: NarrativeSummary[]; trending_keywords?: TrendingKeyword[] }>('/api/trends'),
   narratives: () => request<{ narratives: NarrativeSummary[]; trending_keywords?: TrendingKeyword[] }>('/api/narratives'),
   narrative: (id: string) => request<NarrativeDetail>(`/api/narratives/${encodeURIComponent(id)}`),
@@ -369,7 +381,7 @@ export const api = {
     method: 'POST',
     body: JSON.stringify({
       query,
-      reset: options?.reset ?? true,
+      reset: options?.reset ?? false,
       limit_per_source: options?.limitPerSource ?? 5,
       enable_telegram: options?.enableTelegram ?? true,
       enable_x: options?.enableX ?? true,

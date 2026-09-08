@@ -157,6 +157,7 @@ export default function App({ onNavigateHome }: { onNavigateHome?: () => void } 
   const [showEvidenceLedger, setShowEvidenceLedger] = useState(false);
   const [sentimentChartMode, setSentimentChartMode] = useState<'all' | 'positive' | 'negative' | 'volume'>('all');
   const [conversationLimit, setConversationLimit] = useState(8);
+  const [clearWorkspaceOnSearch, setClearWorkspaceOnSearch] = useState(false);
 
   // Status & Feedback
   const [loading, setLoading] = useState(false);
@@ -300,7 +301,7 @@ export default function App({ onNavigateHome }: { onNavigateHome?: () => void } 
       // Step 1: Live Workspace Ingestion
       setAnalysisStep(1);
       const searchRes: WorkspaceSearchResponse = await api.searchWorkspace(clean, {
-        reset: true,
+        reset: clearWorkspaceOnSearch,
         limitPerSource: 10,
         enableTelegram: selectedSources.telegram,
         enableX: selectedSources.x,
@@ -557,6 +558,27 @@ export default function App({ onNavigateHome }: { onNavigateHome?: () => void } 
                     </button>
                   );
                 })}
+                <label
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    fontSize: 12,
+                    color: '#94A3B8',
+                    cursor: 'pointer',
+                    marginLeft: 'auto',
+                    userSelect: 'none',
+                  }}
+                  title="When unchecked, new search results accumulate with existing evidence"
+                >
+                  <input
+                    type="checkbox"
+                    checked={clearWorkspaceOnSearch}
+                    onChange={(e) => setClearWorkspaceOnSearch(e.target.checked)}
+                    style={{ cursor: 'pointer', accentColor: '#0EA5E9' }}
+                  />
+                  <span>Reset workspace on search</span>
+                </label>
               </div>
             </div>
 
@@ -1606,7 +1628,11 @@ export default function App({ onNavigateHome }: { onNavigateHome?: () => void } 
                   <h1>Audience signals without individual profiling</h1>
                   <p>{demographics.privacy_note}</p>
                 </div>
-                <Badge tone="good"><ShieldCheck size={13} /> k-anonymity guard</Badge>
+                {demographics.sample_status === 'limited_sample' ? (
+                  <Badge tone="warn"><ShieldCheck size={13} /> Limited Sample (k=1 coarse)</Badge>
+                ) : (
+                  <Badge tone="good"><ShieldCheck size={13} /> k-anonymity guard (k={demographics.effective_k || 10})</Badge>
+                )}
               </div>
               <div className="demographic-grid">
                 <DemographicSliceCard title="Language" slice={demographics.language} />
@@ -1755,7 +1781,18 @@ function DemographicSliceCard({ title, slice }: { title: string; slice: Demograp
   const max = Math.max(1, ...entries.map(([, value]) => value));
   return (
     <div className="panel demographic-card">
-      <div className="section-head compact"><h3>{title}</h3><Badge>{pct(slice.coverage)} coverage</Badge></div>
+      <div className="section-head compact">
+        <h3>{title}</h3>
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+          {slice.status === 'limited_sample' && <Badge tone="warn">Limited Sample</Badge>}
+          <Badge>{pct(slice.coverage)} coverage</Badge>
+        </div>
+      </div>
+      {slice.warning && (
+        <p style={{ fontSize: 11, color: '#FBBF24', margin: '4px 0 8px', lineHeight: 1.4 }}>
+          {slice.warning}
+        </p>
+      )}
       <div className="bars">
         {entries.map(([label, value]) => (
           <div className="bar-row" key={label}>

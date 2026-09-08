@@ -164,6 +164,8 @@ class EventStore:
         limit: int = 500,
         platform: str | None = None,
         narrative_id: str | None = None,
+        since: datetime | None = None,
+        until: datetime | None = None,
         newest_first: bool = False,
     ) -> list[SocialEvent]:
         clauses: list[str] = []
@@ -174,6 +176,12 @@ class EventStore:
         if narrative_id:
             clauses.append("narrative_cluster_id = ?")
             params.append(narrative_id)
+        if since:
+            clauses.append("created_at >= ?")
+            params.append(since.astimezone(timezone.utc).isoformat() if since.tzinfo else since.isoformat())
+        if until:
+            clauses.append("created_at <= ?")
+            params.append(until.astimezone(timezone.utc).isoformat() if until.tzinfo else until.isoformat())
         where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
         order = "DESC" if newest_first else "ASC"
         sql = f"SELECT * FROM events{where} ORDER BY created_at {order} LIMIT ?"
