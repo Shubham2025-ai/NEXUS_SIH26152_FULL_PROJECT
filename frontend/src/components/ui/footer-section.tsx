@@ -59,7 +59,7 @@ const footerSections: FooterSection[] = [
 	{
 		label: 'Audit & Governance',
 		links: [
-			{ title: 'SIH26152 · NTRO', href: '#about' },
+			{ title: 'System Architecture', href: '#about' },
 			{ title: 'Honest Baseline Doctrine', href: '#about' },
 			{ title: 'Zero-Key Source Matrix', href: '#workflow' },
 			{ title: 'Signed Evidence Certificates', href: '#capabilities' },
@@ -119,11 +119,6 @@ export function Footer({ onNavigateDashboard, className = '' }: FooterProps) {
 						Evidence-backed social intelligence framework designed for national situational awareness.
 						Four decoupled analytical engines, honest baseline doctrine, and zero-hallucination provenance.
 					</p>
-
-					<div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-full bg-[#101b2d] border border-[#203454] text-[11px] font-mono text-[#87b5ff]">
-						<span className="h-1.5 w-1.5 rounded-full bg-[#4ee1a0] animate-pulse" />
-						<span>Smart India Hackathon 2026 · SIH26152 · NTRO</span>
-					</div>
 
 					<p className="text-muted-foreground pt-4 text-xs">
 						© {new Date().getFullYear()} NEXUS. All rights reserved.

@@ -279,7 +279,7 @@ export const PrismaHero = ({ onNavigateDashboard, className = "" }: PrismaHeroPr
           <div className="flex items-center gap-2 mb-4">
             <span className="h-2 w-2 rounded-full bg-[#5b8cff] shadow-[0_0_8px_#5b8cff]" />
             <span className="text-xs font-bold uppercase tracking-[0.2em] text-[#87b5ff]">
-              Smart India Hackathon 2026 · SIH26152 · NTRO
+              National Situational Awareness
             </span>
           </div>
 
@@ -687,7 +687,7 @@ export const PrismaHero = ({ onNavigateDashboard, className = "" }: PrismaHeroPr
             Operational Scenarios & <span className="text-[#E1E0CC]">Strategic Defense.</span>
           </h2>
           <p className="text-base sm:text-lg text-[#9cb0cf] max-w-2xl mb-12">
-            Engineered to fulfill the requirements of the Smart India Hackathon problem statement for intelligence analysts and defense agencies.
+            Engineered for national security operations, strategic intelligence analysts, and defense agencies.
           </p>
         </SectionReveal>
 
